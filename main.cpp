@@ -1,78 +1,279 @@
-#include <owl/owl.h>
-#include <iostream>
-#include <fstream>
-#include "GeomTypes.h"
+#include "owl/owl.h"
+#include "deviceCode.h"
+
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
 
 extern "C" char deviceCode_ptx[];
 
-int main() {
-    const int W = 400;
-    const int H = 240;
 
-    OWLContext context = owlContextCreate(nullptr, 0);
+const char *outFileName = "simpleTriangles.png";
+
+// Image dimensions 
+const int W = 100;
+const int H = 100;
+
+const vec2i fbSize(W, H);
+
+
+#define LOG(message)                                            \
+    std::cout << OWL_TERMINAL_BLUE;                             \
+    std::cout << "context.sample(main): " << mesag << std::endl;    \
+    std::cout << OWL_TERMINAL_DEFAULT;
+
+#define LOG_OK(message)                                         \
+    std::cout << OWL_TERMINAL_LIGHT_BLUE;                         \
+    std::cout << "#context.sample(main): " << message << std::endl;   \
+    std::cout << OWL_TERMINAL_DEFAULT;
+
+
+// ---- CAMERA ----
+const vec3f lookFrom(0.0f, 0.0f, -2.0f);
+const vec3f lookAt(0.0f, 0.0f, 0.0f);
+const vec3f lookUp(0.0f, 1.0f, 0.0f);
+const float cosFovy = 0.66f;
+
+
+// ---- VERTS & INDICES ----
+const int NUM_VERTS = 8;
+vec3f verts[NUM_VERTS] = {
+    { -1.0f, -1.0f, -1.0f }, // Front   Bottom  Left
+    {  1.0f, -1.0f, -1.0f }, // Front   Bottom  Right
+    { -1.0f,  1.0f, -1.0f }, // Front   Top     left
+    {  1.0f,  1.0f, -1.0f }, // Front   Top     Right
+    { -1.0f, -1.0f,  1.0f }, // Back    Bottom  Left
+    {  1.0f, -1.0f,  1.0f }, // Back    Bottom  Right
+    { -1.0f,  1.0f,  1.0f }, // Back    Top     left
+    {  1.0f,  1.0f,  1.0f }, // Back    Top     Right
+};
+
+const int NUM_INDICES = 12;
+vec3i indices[NUM_INDICES] = {
+    { 0, 1, 3 }, { 2, 3, 0 },
+    { 5, 7, 6 }, { 5, 6, 4 },
+    { 0, 4, 5 }, { 0, 5, 1 },
+    { 2, 3, 7 }, { 2, 7, 6 },
+    { 1, 5, 7 }, { 1, 7, 3 },
+    { 4, 0, 2 }, { 4, 2, 6 }
+};
+
+
+int main(int ac, char **av){
+    // Initialize CUDA and Optix
+    OWLContext context = owlContextCreate(nullptr, 1);
+    
+    // Module creation
+    // PTX = converted CUDA code
     OWLModule module = owlModuleCreate(context, deviceCode_ptx);
 
-    // Host-pinned framebuffer so we can write it out directly
-    OWLBuffer fb = owlHostPinnedBufferCreate(context, OWL_FLOAT3, W*H);
+    // -------- VAR DECLARATIONS & GEOMETRY INITIALIZATION --------
+    // Geometry type needs to be in deviceCode.h
+    OWLVarDecl trianglesGeomVars[] = {
+        { "index", OWL_BUFPTR, OWL_OFFSETOF(TrianglesGeomData, index) },
+        { "vertex", OWL_BUFPTR, OWL_OFFSETOF(TrianglesGeomData, vertex) },
+        { "color", OWL_FLOAT3, OWL_OFFSETOF(TrianglesGeomData, color) },
+        { "counter", OWL_BUFPTR, OWL_OFFSETOF(TrianglesGeomData, counter) }
+    };
+    
+    OWLGeomType trianglesGeomType = owlGeomTypeCreate(
+        context,                    // Context
+        OWL_TRIANGLES,              // Geometry type
+        sizeof(TrianglesGeomData),  // Size
+        trianglesGeomVars,          // Variables
+        4                           // # of variables
+    );
 
-    // Raygen variables
-    OWLVarDecl rayGenVars[] = {
-        { "fbPtr", OWL_BUFPTR, OWL_OFFSETOF(RayGenData,fbPtr) },
-        { "fbSize", OWL_INT2,  OWL_OFFSETOF(RayGenData,fbSize) },
-        { "camera.origin",         OWL_FLOAT3, OWL_OFFSETOF(RayGenData,camera.origin) },
-        { "camera.lower_left_corner", OWL_FLOAT3, OWL_OFFSETOF(RayGenData,camera.lower_left_corner) },
-        { "camera.horizontal",     OWL_FLOAT3, OWL_OFFSETOF(RayGenData,camera.horizontal) },
-        { "camera.vertical",       OWL_FLOAT3, OWL_OFFSETOF(RayGenData,camera.vertical) },
-        { /* sentinel */ }
+    owlGeomTypeSetClosestHit(
+        trianglesGeomType,  // Geometry type
+        0,                  // Ray type
+        module,             // Module
+        "TriangleMesh"      // Program name
+    );
+
+    // -------- BUILD MESHES --------
+    // owlDeviceBufferCreate() creates a device buffer
+    // where every device has its own local copy of the given buffer
+
+    // Vertex Buffer
+    OWLBuffer vertexBuffer = owlDeviceBufferCreate(
+        context,        // Context
+        OWL_FLOAT3,     // Datatype
+        NUM_VERTS,      // Count
+        verts           // Data
+    );
+
+    // Index Buffer
+    OWLBuffer indexBuffer = owlDeviceBufferCreate(
+        context,
+        OWL_INT3,
+        NUM_INDICES,
+        indices
+    );
+
+    int zero = 0;
+
+    // Use a host-pinned buffer for the counter so the host can read it after launch
+    OWLBuffer counterBuffer = owlHostPinnedBufferCreate(
+        context,
+        OWL_INT,
+        1
+    );
+    // initialize counter to zero
+    uint32_t *counterInit = (uint32_t*)owlBufferGetPointer(counterBuffer, 0);
+    *counterInit = 0;
+    
+    OWLBuffer frameBuffer = owlHostPinnedBufferCreate(
+        context,
+        OWL_INT,
+        fbSize.x * fbSize.y
+    );
+
+    // Create triangle geometry
+    OWLGeom trianglesGeom = owlGeomCreate(context, trianglesGeomType);
+
+    owlTrianglesSetVertices(
+        trianglesGeom,  // Triangle geometry
+        vertexBuffer,   // Vertices
+        NUM_VERTS,   // # of vertices
+        sizeof(vec3f),  // Stride
+        0               // Offset
+    );
+    
+    owlTrianglesSetIndices(
+        trianglesGeom,  // Triangle geometry
+        indexBuffer,    // Indices
+        NUM_INDICES,    // # of indices
+        sizeof(vec3i),  // Stride
+        0               // Offset
+    );
+
+    owlGeomSetBuffer(
+        trianglesGeom,
+        "vertex",
+        vertexBuffer
+    );
+
+    owlGeomSetBuffer(
+        trianglesGeom,
+        "index",
+        indexBuffer
+    );
+
+    owlGeomSet3f(trianglesGeom, "color", owl3f{0, 1, 0});
+
+    // provide the counter buffer to the geometry so the closest-hit can increment it
+    owlGeomSetBuffer(
+        trianglesGeom,
+        "counter",
+        counterBuffer
+    );
+
+    // Group + Acceleration structure
+    OWLGroup trianglesGroup = owlTrianglesGeomGroupCreate(
+        context,
+        1,
+        &trianglesGeom
+    );
+    owlGroupBuildAccel(trianglesGroup);
+
+    // Instance the group
+    OWLGroup world = owlInstanceGroupCreate(
+        context,
+        1,
+        &trianglesGroup
+    );
+    owlGroupBuildAccel(world);
+
+    // -------- RAY GENERATION SHADER SETUP --------
+    OWLVarDecl missProgVars[] = {
+        { "color0", OWL_FLOAT3, OWL_OFFSETOF(MissProgData, color0) },
+        { "color1", OWL_FLOAT3, OWL_OFFSETOF(MissProgData, color1) },
+        { /* Sentinel */ }
     };
 
-    OWLRayGen rayGen = owlRayGenCreate(context, module, "rayGen", sizeof(RayGenData), rayGenVars, -1);
+    OWLMissProg missProg = owlMissProgCreate(
+        context,
+        module,
+        "miss",
+        sizeof(MissProgData),
+        missProgVars,
+        -1
+    );
 
-    // Framebuffer and size
-    owlRayGenSetBuffer(rayGen, "fbPtr", fb);
-    owl2i fbSize = { W, H };
+    owlMissProgSet3f(missProg, "color0", owl3f{0.8f, 0.0f, 0.0f});
+    owlMissProgSet3f(missProg, "color1", owl3f{0.8f, 0.8f, 0.8f});
+
+
+    OWLVarDecl rayGenVars[] =
+    {
+        { "fbPtr",         OWL_BUFPTR, OWL_OFFSETOF(RayGenData,fbPtr)},
+        { "fbSize",        OWL_INT2,   OWL_OFFSETOF(RayGenData,fbSize)},
+        { "world",         OWL_GROUP,  OWL_OFFSETOF(RayGenData,world)},
+        { "camera.pos",    OWL_FLOAT3, OWL_OFFSETOF(RayGenData,camera.pos)},
+        { "camera.dir_00", OWL_FLOAT3, OWL_OFFSETOF(RayGenData,camera.dir_00)},
+        { "camera.dir_du", OWL_FLOAT3, OWL_OFFSETOF(RayGenData,camera.dir_du)},
+        { "camera.dir_dv", OWL_FLOAT3, OWL_OFFSETOF(RayGenData,camera.dir_dv)},
+        { /* sentinel to mark end of list */ }
+    };
+
+    OWLRayGen rayGen = owlRayGenCreate(
+        context,            // Context
+        module,             // Module
+        "simpleRayGen",     // Name
+        sizeof(RayGenData), // Size
+        rayGenVars,         // Variables
+        -1                  // ???
+    );
+
+
+    // Compute camera variable values
+    vec3f camera_pos = lookFrom;
+    vec3f camera_d00 = normalize(lookAt - lookFrom);
+
+    float aspect = fbSize.x / float(fbSize.y);
+
+    vec3f camera_ddu = cosFovy * aspect * normalize(cross(camera_d00, lookUp));
+    vec3f camera_ddv = cosFovy * normalize(cross(camera_ddu, camera_d00));
+
+    camera_d00 -= 0.5f * camera_ddu;
+    camera_d00 -= 0.5f * camera_ddv;
+
+    // -------- SHADER BINDING TABLE TO TRACE GROUPS --------
+    // Set RayGen variables
+    owlRayGenSetBuffer(rayGen, "fbPtr", frameBuffer);
     owlRayGenSet2i(rayGen, "fbSize", (const owl2i&)fbSize);
+    owlRayGenSetGroup(rayGen, "world", world);
+    owlRayGenSet3f(rayGen, "camera.pos", (const owl3f&)camera_pos);
+    owlRayGenSet3f(rayGen, "camera.dir_00", (const owl3f&)camera_d00);
+    owlRayGenSet3f(rayGen, "camera.dir_du", (const owl3f&)camera_ddu);
+    owlRayGenSet3f(rayGen, "camera.dir_dv", (const owl3f&)camera_ddv);
 
-    // Simple pinhole camera
-    const vec3f origin = vec3f(0.f,0.f,0.f);
-    const float aspect = float(W)/float(H);
-    const float vfov = 90.f;
-    const float theta = vfov * 3.14159265358979323846f / 180.0f;
-    const float half_height = tanf(theta/2.0f);
-    const float half_width = aspect * half_height;
-    const vec3f llc = origin - vec3f(half_width, half_height, 1.f);
-    const vec3f horiz = vec3f(2.f*half_width, 0.f, 0.f);
-    const vec3f vert = vec3f(0.f, 2.f*half_height, 0.f);
-
-    owlRayGenSet3f(rayGen, "camera.origin", (const owl3f&)origin);
-    owlRayGenSet3f(rayGen, "camera.lower_left_corner", (const owl3f&)llc);
-    owlRayGenSet3f(rayGen, "camera.horizontal", (const owl3f&)horiz);
-    owlRayGenSet3f(rayGen, "camera.vertical", (const owl3f&)vert);
-
-    // Build and run
     owlBuildPrograms(context);
     owlBuildPipeline(context);
     owlBuildSBT(context);
 
-    owlRayGenLaunch2D(rayGen, W, H);
+    // -------- LAUNCH RAY GENERATION --------
+    owlRayGenLaunch2D(rayGen, fbSize.x, fbSize.y);
+    
+    // Write results to file
+    const uint32_t *fb = (const uint32_t*)owlBufferGetPointer(frameBuffer, 0);
+    stbi_write_png(
+        outFileName,
+        fbSize.x,
+        fbSize.y,
+        4,
+        fb,
+        fbSize.x * sizeof(uint32_t)
+    );
 
-    // Write out a simple PPM so no external lib required
-    vec3f *pixels = (vec3f*)owlBufferGetPointer(fb,0);
-    std::ofstream ofs("out.ppm", std::ios::binary);
-    ofs << "P6\n" << W << " " << H << "\n255\n";
-    for (int y = H-1; y >= 0; --y) {
-        for (int x = 0; x < W; ++x) {
-            vec3f c = pixels[y*W + x];
-            unsigned char r = (unsigned char)(255.99f * fminf(fmaxf(c.x,0.f),1.f));
-            unsigned char g = (unsigned char)(255.99f * fminf(fmaxf(c.y,0.f),1.f));
-            unsigned char b = (unsigned char)(255.99f * fminf(fmaxf(c.z,0.f),1.f));
-            ofs.put(r); ofs.put(g); ofs.put(b);
-        }
-    }
-    ofs.close();
+    // read back the counter from the host-pinned buffer
+    const uint32_t *counterPtr = (const uint32_t*)owlBufferGetPointer(counterBuffer, 0);
+    const uint32_t counterVal = *counterPtr;
+    std::cout << counterVal << std::endl;
 
-    std::cout << "Wrote out.ppm\n";
-
+    // -------- CLEAN UP --------
+    owlModuleRelease(module);
+    owlRayGenRelease(rayGen);
+    owlBufferRelease(frameBuffer);
     owlContextDestroy(context);
-    return 0;
 }

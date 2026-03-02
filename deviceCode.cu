@@ -1,42 +1,67 @@
-#include <owl/owl_device.h>
-#include "GeomTypes.h"
+#include "deviceCode.h"
+#include <optix_device.h>
 
-using namespace owl;
 
-// Minimal raygen that performs a local ray-sphere intersection
-// (no OptiX tracing) and writes a color into the framebuffer.
-OPTIX_RAYGEN_PROGRAM(rayGen)()
+OPTIX_RAYGEN_PROGRAM(simpleRayGen)() // Name in parantheses must match name given in main
 {
-	const RayGenData &self = owl::getProgramData<RayGenData>();
-	const vec2i pix = owl::getLaunchIndex();
-	const vec2i dims = owl::getLaunchDims();
-	const int idx = pix.x + pix.y * dims.x;
+	// Read Program data set (RayGenData struct from deviceCode.h)
+	const RayGenData& self = owl::getProgramData<RayGenData>();
+	// Get pixel ID
+	const vec2i pixelID = owl::getLaunchIndex();
+	const vec2f screen = (vec2f(pixelID) + vec2f(0.5f)) / vec2f(self.fbSize);
 
-	const float u = (pix.x + 0.5f) / float(dims.x);
-	const float v = (pix.y + 0.5f) / float(dims.y);
+	// Ray setup
+	owl::Ray ray;
+	ray.origin = self.camera.pos;
+	ray.direction = normalize(
+		self.camera.dir_00
+	+	screen.u * self.camera.dir_du
+	+	screen.v * self.camera.dir_dv
+	);
+	
+	vec3f color;
 
-	const vec3f origin = self.camera.origin;
-	const vec3f dir = normalize(self.camera.lower_left_corner + u*self.camera.horizontal + v*self.camera.vertical - self.camera.origin);
+	owl::traceRay(
+		self.world,		// Traceable acceleration structure
+		ray,			// Ray
+		color			// PRD
+	);
 
-	// simple analytic sphere at (0,0,-1)
-	const vec3f center = vec3f(0.f,0.f,-1.f);
-	const float radius = 0.5f;
-	const vec3f oc = origin - center;
-	const float a = dot(dir,dir);
-	const float b = dot(oc,dir);
-	const float c = dot(oc,oc) - radius*radius;
-	const float disc = b*b - a*c;
+	// Write result to file buffer
+	const int fbOfs = pixelID.x + self.fbSize.x * pixelID.y;
+	self.fbPtr[fbOfs] = owl::make_rgba(color);
+}
 
-	vec3f col;
-	if (disc < 0.f) {
-		float t = 0.5f*(dir.y + 1.0f);
-		col = (1.0f - t) * vec3f(1.f,1.f,1.f) + t * vec3f(0.5f,0.7f,1.f);
-	} else {
-		const float t = (-b - sqrtf(disc)) / a;
-		const vec3f P = origin + t*dir;
-		const vec3f N = normalize(P - center);
-		col = 0.5f*(N + vec3f(1.f));
-	}
+// Closest Hit Program for the triangle mesh
+OPTIX_CLOSEST_HIT_PROGRAM(TriangleMesh)()
+{
+	vec3f &prd = owl::getPRD<vec3f>();
 
-	self.fbPtr[idx] = col;
+	const TrianglesGeomData &self = owl::getProgramData<TrianglesGeomData>();
+
+	// Compute normal
+	const int primitiveID = optixGetPrimitiveIndex();
+	const vec3i index = self.index[primitiveID];
+	const vec3f &A = self.vertex[index.x];
+	const vec3f &B = self.vertex[index.y];
+	const vec3f &C = self.vertex[index.z];
+	const vec3f Ng = normalize(cross(B-A, C-A));
+
+	const vec3f rayDir = optixGetWorldRayDirection();
+	prd = (0.2f + 0.8f * fabs(dot(rayDir, Ng))) * self.color;
+	
+	// increment hit counter stored in the triangle's SBT data
+	atomicAdd(self.counter, 1);
+}
+
+
+OPTIX_MISS_PROGRAM(miss)()
+{
+	const vec2i pixelID = owl::getLaunchIndex();
+
+	const MissProgData &self = owl::getProgramData<MissProgData>();
+
+	vec3f &prd = owl::getPRD<vec3f>();
+	int pattern = (pixelID.x / 8) ^ (pixelID.y / 8);
+	prd = (pattern & 1) ? self.color1 : self.color0;
 }
