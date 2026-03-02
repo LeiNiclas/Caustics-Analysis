@@ -1,5 +1,6 @@
 #include "owl/owl.h"
 #include "deviceCode.h"
+#include "objLoader.h"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
@@ -10,8 +11,8 @@ extern "C" char deviceCode_ptx[];
 const char *outFileName = "simpleTriangles.png";
 
 // Image dimensions 
-const int W = 100;
-const int H = 100;
+const int W = 800;
+const int H = 600;
 
 const vec2i fbSize(W, H);
 
@@ -28,34 +29,10 @@ const vec2i fbSize(W, H);
 
 
 // ---- CAMERA ----
-const vec3f lookFrom(0.0f, 0.0f, -2.0f);
+const vec3f lookFrom(0.0f, 0.0f, -5.0f);
 const vec3f lookAt(0.0f, 0.0f, 0.0f);
 const vec3f lookUp(0.0f, 1.0f, 0.0f);
 const float cosFovy = 0.66f;
-
-
-// ---- VERTS & INDICES ----
-const int NUM_VERTS = 8;
-vec3f verts[NUM_VERTS] = {
-    { -1.0f, -1.0f, -1.0f }, // Front   Bottom  Left
-    {  1.0f, -1.0f, -1.0f }, // Front   Bottom  Right
-    { -1.0f,  1.0f, -1.0f }, // Front   Top     left
-    {  1.0f,  1.0f, -1.0f }, // Front   Top     Right
-    { -1.0f, -1.0f,  1.0f }, // Back    Bottom  Left
-    {  1.0f, -1.0f,  1.0f }, // Back    Bottom  Right
-    { -1.0f,  1.0f,  1.0f }, // Back    Top     left
-    {  1.0f,  1.0f,  1.0f }, // Back    Top     Right
-};
-
-const int NUM_INDICES = 12;
-vec3i indices[NUM_INDICES] = {
-    { 0, 1, 3 }, { 2, 3, 0 },
-    { 5, 7, 6 }, { 5, 6, 4 },
-    { 0, 4, 5 }, { 0, 5, 1 },
-    { 2, 3, 7 }, { 2, 7, 6 },
-    { 1, 5, 7 }, { 1, 7, 3 },
-    { 4, 0, 2 }, { 4, 2, 6 }
-};
 
 
 int main(int ac, char **av){
@@ -74,6 +51,7 @@ int main(int ac, char **av){
         { "color", OWL_FLOAT3, OWL_OFFSETOF(TrianglesGeomData, color) },
         { "counter", OWL_BUFPTR, OWL_OFFSETOF(TrianglesGeomData, counter) }
     };
+
     
     OWLGeomType trianglesGeomType = owlGeomTypeCreate(
         context,                    // Context
@@ -82,6 +60,21 @@ int main(int ac, char **av){
         trianglesGeomVars,          // Variables
         4                           // # of variables
     );
+
+
+    // ---- LOAD MESH ----
+    TriangleMesh mesh = loadObj("Monkey.obj");
+
+    OWLBuffer vertexBuffer = owlDeviceBufferCreate(context, OWL_FLOAT3, mesh.vertices.size(), mesh.vertices.data());
+    OWLBuffer indexBuffer  = owlDeviceBufferCreate(context, OWL_INT3,   mesh.indices.size(),  mesh.indices.data());
+
+    OWLGeom geom = owlGeomCreate(context, trianglesGeomType);
+    
+    owlTrianglesSetVertices(geom, vertexBuffer, mesh.vertices.size(), sizeof(vec3f), 0);
+    owlTrianglesSetIndices (geom, indexBuffer,  mesh.indices.size(),  sizeof(vec3i), 0);
+
+    owlGeomSetBuffer(geom, "vertex", vertexBuffer);
+    owlGeomSetBuffer(geom, "index", indexBuffer);
 
     owlGeomTypeSetClosestHit(
         trianglesGeomType,  // Geometry type
@@ -93,24 +86,6 @@ int main(int ac, char **av){
     // -------- BUILD MESHES --------
     // owlDeviceBufferCreate() creates a device buffer
     // where every device has its own local copy of the given buffer
-
-    // Vertex Buffer
-    OWLBuffer vertexBuffer = owlDeviceBufferCreate(
-        context,        // Context
-        OWL_FLOAT3,     // Datatype
-        NUM_VERTS,      // Count
-        verts           // Data
-    );
-
-    // Index Buffer
-    OWLBuffer indexBuffer = owlDeviceBufferCreate(
-        context,
-        OWL_INT3,
-        NUM_INDICES,
-        indices
-    );
-
-    int zero = 0;
 
     // Use a host-pinned buffer for the counter so the host can read it after launch
     OWLBuffer counterBuffer = owlHostPinnedBufferCreate(
@@ -128,59 +103,28 @@ int main(int ac, char **av){
         fbSize.x * fbSize.y
     );
 
-    // Create triangle geometry
-    OWLGeom trianglesGeom = owlGeomCreate(context, trianglesGeomType);
-
-    owlTrianglesSetVertices(
-        trianglesGeom,  // Triangle geometry
-        vertexBuffer,   // Vertices
-        NUM_VERTS,   // # of vertices
-        sizeof(vec3f),  // Stride
-        0               // Offset
-    );
-    
-    owlTrianglesSetIndices(
-        trianglesGeom,  // Triangle geometry
-        indexBuffer,    // Indices
-        NUM_INDICES,    // # of indices
-        sizeof(vec3i),  // Stride
-        0               // Offset
-    );
-
-    owlGeomSetBuffer(
-        trianglesGeom,
-        "vertex",
-        vertexBuffer
-    );
-
-    owlGeomSetBuffer(
-        trianglesGeom,
-        "index",
-        indexBuffer
-    );
-
-    owlGeomSet3f(trianglesGeom, "color", owl3f{0, 1, 0});
+    owlGeomSet3f(geom, "color", owl3f{0, 1, 0});
 
     // provide the counter buffer to the geometry so the closest-hit can increment it
     owlGeomSetBuffer(
-        trianglesGeom,
+        geom,
         "counter",
         counterBuffer
     );
 
     // Group + Acceleration structure
-    OWLGroup trianglesGroup = owlTrianglesGeomGroupCreate(
+    OWLGroup triangleGroup = owlTrianglesGeomGroupCreate(
         context,
         1,
-        &trianglesGeom
+        &geom
     );
-    owlGroupBuildAccel(trianglesGroup);
+    owlGroupBuildAccel(triangleGroup);
 
     // Instance the group
     OWLGroup world = owlInstanceGroupCreate(
         context,
         1,
-        &trianglesGroup
+        &triangleGroup
     );
     owlGroupBuildAccel(world);
 
