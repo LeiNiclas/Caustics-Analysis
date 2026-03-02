@@ -12,11 +12,11 @@ OPTIX_RAYGEN_PROGRAM(simpleRayGen)() // Name in parantheses must match name give
 
 	// Ray setup
 	owl::Ray ray;
-	ray.origin = self.camera.pos;
+	ray.origin = self.camera.pos + screen.u * self.camera.dir_du + screen.v * self.camera.dir_dv;
 	ray.direction = normalize(
 		self.camera.dir_00
-	+	screen.u * self.camera.dir_du
-	+	screen.v * self.camera.dir_dv
+//	+	screen.u * self.camera.dir_du
+//	+	screen.v * self.camera.dir_dv
 	);
 	
 	vec3f color;

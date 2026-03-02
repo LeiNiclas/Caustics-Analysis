@@ -172,15 +172,25 @@ int main(int ac, char **av){
 
     // Compute camera variable values
     vec3f camera_pos = lookFrom;
-    vec3f camera_d00 = normalize(lookAt - lookFrom);
+    vec3f camera_d00 = normalize(lookAt - lookFrom); //fwd
 
     float aspect = fbSize.x / float(fbSize.y);
 
-    vec3f camera_ddu = cosFovy * aspect * normalize(cross(camera_d00, lookUp));
-    vec3f camera_ddv = cosFovy * normalize(cross(camera_ddu, camera_d00));
+    // ---- PERSPECTIVE CAMERA ----
+    // vec3f camera_ddu = cosFovy * aspect * normalize(cross(camera_d00, lookUp)); //right
+    // vec3f camera_ddv = cosFovy * normalize(cross(camera_ddu, camera_d00)); //up
+    // camera_d00 -= 0.5f * camera_ddu;
+    // camera_d00 -= 0.5f * camera_ddv;
 
-    camera_d00 -= 0.5f * camera_ddu;
-    camera_d00 -= 0.5f * camera_ddv;
+    float orthoHeight = 1.0f;
+
+    vec3f camera_ddu = orthoHeight * aspect * normalize(cross(camera_d00, lookUp));
+    vec3f camera_ddv = orthoHeight * normalize(cross(camera_ddu, camera_d00));
+
+    camera_pos -= 0.5f * camera_ddu;
+    camera_pos -= 0.5f * camera_ddv;
+
+    
 
     // -------- SHADER BINDING TABLE TO TRACE GROUPS --------
     // Set RayGen variables
