@@ -49,7 +49,8 @@ int main(int ac, char **av){
         { "index", OWL_BUFPTR, OWL_OFFSETOF(TrianglesGeomData, index) },
         { "vertex", OWL_BUFPTR, OWL_OFFSETOF(TrianglesGeomData, vertex) },
         { "color", OWL_FLOAT3, OWL_OFFSETOF(TrianglesGeomData, color) },
-        { "counter", OWL_BUFPTR, OWL_OFFSETOF(TrianglesGeomData, counter) }
+        { "counter", OWL_BUFPTR, OWL_OFFSETOF(TrianglesGeomData, counter) },
+        { "world", OWL_GROUP, OWL_OFFSETOF(TrianglesGeomData, world)}
     };
 
     
@@ -58,7 +59,7 @@ int main(int ac, char **av){
         OWL_TRIANGLES,              // Geometry type
         sizeof(TrianglesGeomData),  // Size
         trianglesGeomVars,          // Variables
-        4                           // # of variables
+        5                           // # of variables
     );
 
 
@@ -127,6 +128,7 @@ int main(int ac, char **av){
         &triangleGroup
     );
     owlGroupBuildAccel(world);
+    owlGeomSetGroup(geom, "world", world);
 
     // -------- RAY GENERATION SHADER SETUP --------
     OWLVarDecl missProgVars[] = {

@@ -9,6 +9,12 @@ using namespace owl;
 // Structs here are used in OWLVarDecl
 // variables are set during the shader binding table setup
 
+struct PRD
+{
+    vec3f color;
+    int depth;
+};
+
 
 struct RayGenData
 {
@@ -31,6 +37,7 @@ struct TrianglesGeomData
     vec3f *vertex;  // vert buffer
     vec3i *index;   // vert indices buffer
     uint32_t *counter; // pointer to global hit counter
+    OptixTraversableHandle world;
 };
 
 

@@ -9,4 +9,3 @@ struct TriangleMesh {
 };
 
 TriangleMesh loadObj(const std::string& filename);
-
