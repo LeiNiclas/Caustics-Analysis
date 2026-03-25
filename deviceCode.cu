@@ -51,7 +51,10 @@ OPTIX_CLOSEST_HIT_PROGRAM(TriangleMesh)()
 	vec3f Ng = normalize(cross(B-A, C-A));
 
 	const vec3f rayDir = optixGetWorldRayDirection();
+
+	const vec3f rayOrigin = optixGetWorldRayOrigin();
 	
+
 	if (dot(Ng, rayDir) > 0.0f)
 		Ng = -Ng;
 	

@@ -9,3 +9,5 @@ struct TriangleMesh {
 };
 
 TriangleMesh loadObj(const std::string& filename);
+
+void applyTransform(TriangleMesh& mesh, const owl::vec3f& pos, const owl::vec3f& rotDeg, const owl::vec3f& scale);

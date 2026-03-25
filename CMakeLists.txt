@@ -3,7 +3,7 @@ project(CausticsAnalysis LANGUAGES CXX CUDA)
 
 add_subdirectory(owl EXCLUDE_FROM_ALL)
 
-add_executable(app main.cpp objLoader.cpp)
+add_executable(app main.cpp objLoader.cpp sceneLoader.cpp)
 include_directories(${CMAKE_SOURCE_DIR})
 target_link_libraries(app PRIVATE owl::owl)
 
@@ -14,11 +14,21 @@ add_custom_command(TARGET app POST_BUILD
     COMMENT "Copying OWL DLL to app directory"
 )
 
+
 add_custom_command(TARGET app POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
-        ${CMAKE_SOURCE_DIR}/Monkey.obj
-        $<TARGET_FILE_DIR:app>/Monkey.obj
-    COMMENT "Copying Monkey.obj to output directory"
+        ${CMAKE_SOURCE_DIR}/scene.json
+        $<TARGET_FILE_DIR:app>/scene.json
+    COMMENT "Copying scene.json to output directory"    
+)
+
+file(GLOB OBJ_FILES "${CMAKE_SOURCE_DIR}/*.obj")
+
+add_custom_command(TARGET app POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${OBJ_FILES}
+        $<TARGET_FILE_DIR:app>
+    COMMENT "Copying all .obj files to output directory"
 )
 
 embed_ptx(
