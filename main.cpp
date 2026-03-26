@@ -2,23 +2,22 @@
 #include "deviceCode.h"
 #include "objLoader.h"
 #include "sceneLoader.h"
+#include "vtkExport.h"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
 extern "C" char deviceCode_ptx[];
 
-
-const char *outFileName = "simpleTriangles.png";
 const char *sceneFileName = "scene.json";
 
 // Image dimensions 
-const int W = 800;
-const int H = 600;
+const int W = 512;
+const int H = 512;
 
 const vec2i fbSize(W, H);
 const vec3f lookUp(0.0f, 1.0f, 0.0f);
-const float orthoHeight = 2.0f;
+const float orthoHeight = 1.0f;
 
 #define LOG(message)                                            \
     std::cout << OWL_TERMINAL_BLUE;                             \
@@ -85,8 +84,7 @@ int main(int ac, char **av){
     owlGeomTypeSetClosestHit(trianglesGeomType, 0, module, "TriangleMesh");
 
 
-    // ---- LOAD SCENE ----
-    //TriangleMesh mesh = loadObj("Monkey.obj");
+    // -------- LOAD SCENE --------
     SceneConfig scene = loadScene(sceneFileName);
 
     if (scene.meshes.empty())
@@ -100,10 +98,26 @@ int main(int ac, char **av){
         return 1;
     }
 
-    // Counter-Buffer
+    // Grid params
+    const vec3i gridDims = scene.grid.cellCount;
+    const vec3f gridOrigin = scene.grid.origin;
+    const vec3f gridCellSize = scene.grid.size / vec3f((float)gridDims.x, (float)gridDims.y, (float)gridDims.z);
+    const int totalCells = gridDims.x * gridDims.y * gridDims.z;
+
+    std::cout << "Grid: " << gridDims.x << "x" << gridDims.y << "x" << gridDims.z
+              << " CellSize: " << gridCellSize.x << std::endl;
+
+    // -------- BUFFER SETUP --------
+    // ---- Counter-Buffer ----
     OWLBuffer counterBuffer = owlHostPinnedBufferCreate(context, OWL_INT, 1);
     uint32_t* counterInit = (uint32_t*)owlBufferGetPointer(counterBuffer, 0);
     *counterInit = 0;
+
+    // ---- Grid-Buffer ----
+    std::vector<uint32_t> zeros(totalCells, 0u);
+
+    OWLBuffer primaryGridBuffer = owlDeviceBufferCreate(context, OWL_INT, totalCells, zeros.data());
+    OWLBuffer bounceGridBuffer = owlDeviceBufferCreate(context, OWL_INT, totalCells, zeros.data());
 
     
     // -------- LOAD MESHES + BUILD GEOMETRY --------
@@ -174,26 +188,38 @@ int main(int ac, char **av){
     // ---- Ray Generation ----
     OWLVarDecl rayGenVars[] =
     {
-        { "fbPtr",         OWL_BUFPTR, OWL_OFFSETOF(RayGenData,fbPtr)},
-        { "fbSize",        OWL_INT2,   OWL_OFFSETOF(RayGenData,fbSize)},
-        { "world",         OWL_GROUP,  OWL_OFFSETOF(RayGenData,world)},
-        { "camera.pos",    OWL_FLOAT3, OWL_OFFSETOF(RayGenData,camera.pos)},
-        { "camera.dir_00", OWL_FLOAT3, OWL_OFFSETOF(RayGenData,camera.dir_00)},
-        { "camera.dir_du", OWL_FLOAT3, OWL_OFFSETOF(RayGenData,camera.dir_du)},
-        { "camera.dir_dv", OWL_FLOAT3, OWL_OFFSETOF(RayGenData,camera.dir_dv)},
+        { "fbPtr",          OWL_BUFPTR, OWL_OFFSETOF(RayGenData, fbPtr)},
+        { "fbSize",         OWL_INT2,   OWL_OFFSETOF(RayGenData, fbSize)},
+        { "world",          OWL_GROUP,  OWL_OFFSETOF(RayGenData, world)},
+        { "camera.pos",     OWL_FLOAT3, OWL_OFFSETOF(RayGenData, camera.pos)},
+        { "camera.dir_00",  OWL_FLOAT3, OWL_OFFSETOF(RayGenData, camera.dir_00)},
+        { "camera.dir_du",  OWL_FLOAT3, OWL_OFFSETOF(RayGenData, camera.dir_du)},
+        { "camera.dir_dv",  OWL_FLOAT3, OWL_OFFSETOF(RayGenData, camera.dir_dv)},
+        { "primaryGrid",    OWL_BUFPTR, OWL_OFFSETOF(RayGenData, primaryGrid)},
+        { "bounceGrid",     OWL_BUFPTR, OWL_OFFSETOF(RayGenData, bounceGrid)},
+        { "gridOrigin",     OWL_FLOAT3, OWL_OFFSETOF(RayGenData, gridOrigin)},
+        { "gridCellSize",   OWL_FLOAT3, OWL_OFFSETOF(RayGenData, gridCellSize)},
+        { "gridDims",       OWL_INT3,   OWL_OFFSETOF(RayGenData, gridDims)},
         { /* sentinel to mark end of list */ }
     };
 
     OWLRayGen rayGen = owlRayGenCreate(
         context,            // Context
         module,             // Module
-        "simpleRayGen",     // Name
+        "rayGen",           // Name
         sizeof(RayGenData), // Size
         rayGenVars,         // Variables
         -1                  // ???
     );
 
     OWLBuffer frameBuffer = owlHostPinnedBufferCreate(context, OWL_INT, fbSize.x * fbSize.y);
+
+    // Set grid data into the raygen once (shared across lights)
+    owlRayGenSetBuffer(rayGen, "primaryGrid", primaryGridBuffer);
+    owlRayGenSetBuffer(rayGen, "bounceGrid", bounceGridBuffer);
+    owlRayGenSet3f(rayGen, "gridOrigin", (const owl3f&)gridOrigin);
+    owlRayGenSet3f(rayGen, "gridCellSize", (const owl3f&)gridCellSize);
+    owlRayGenSet3i(rayGen, "gridDims", (const owl3i&)gridDims);
 
     owlBuildPrograms(context);
     owlBuildPipeline(context);
@@ -206,20 +232,21 @@ int main(int ac, char **av){
     
     
 
-    // -------- SHADER BINDING TABLE TO TRACE GROUPS --------
+    // -------- RENDER FOR EACH LIGHT SOURCE + SAVE PNG --------
     for (int i = 0; i < (int)scene.ligths.size(); ++i)
     {
         const LightSource& light = scene.ligths[i];
 
         std::cout << "Rendering Light " << i
-                  << " at (" << light.position.x << ", " << light.position.y << ", " << light.position.z << ")"
-                  << std::endl;
+                  << " at (" << light.position.x << ", " << light.position.y << ", " << light.position.z << ")";
         
         setupCameraFromLight(rayGen, frameBuffer, world, light, fbSize);
         owlBuildSBT(context);
         owlRayGenLaunch2D(rayGen, fbSize.x, fbSize.y);
 
         std::string filename = "light_" + std::to_string(i) + ".png";
+
+        std::cout << " [Saving...] " << std::endl;
         
         const uint32_t* fb = (const uint32_t*)owlBufferGetPointer(frameBuffer, 0);
         stbi_write_png(
@@ -233,6 +260,21 @@ int main(int ac, char **av){
 
         std::cout << " -> " << filename << " saved." << std::endl;
     }
+
+    // -------- READ GRID + EXPORT VTK --------
+    // primaryGridBuffer/bounceGridBuffer are device buffers; read back to host
+    cudaDeviceSynchronize();
+
+    std::vector<uint32_t> hostPrimary(totalCells);
+    std::vector<uint32_t> hostBounce(totalCells);
+
+    cudaMemcpy(hostPrimary.data(), owlBufferGetPointer(primaryGridBuffer, 0),
+               totalCells * sizeof(uint32_t), cudaMemcpyDeviceToHost);
+    cudaMemcpy(hostBounce.data(), owlBufferGetPointer(bounceGridBuffer, 0),
+               totalCells * sizeof(uint32_t), cudaMemcpyDeviceToHost);
+
+    exportVTI("caustics_primary.vti", hostPrimary.data(), gridDims, gridOrigin, gridCellSize, "primary");
+    exportVTI("caustics_bounce.vti", hostBounce.data(), gridDims, gridOrigin, gridCellSize, "bounce");
 
     // read back the counter from the host-pinned buffer
     const uint32_t *counterPtr = (const uint32_t*)owlBufferGetPointer(counterBuffer, 0);

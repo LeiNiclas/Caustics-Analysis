@@ -13,6 +13,13 @@ struct PRD
 {
     vec3f color;
     int depth;
+
+    // Grid params
+    uint32_t *primaryGrid;
+    uint32_t *bounceGrid;
+    vec3f gridOrigin;
+    vec3f gridCellSize;
+    vec3i gridDims;
 };
 
 
@@ -28,6 +35,12 @@ struct RayGenData
         vec3f dir_du;
         vec3f dir_dv;
     } camera;
+
+    uint32_t* primaryGrid;
+    uint32_t* bounceGrid;
+    vec3f gridOrigin;
+    vec3f gridCellSize;
+    vec3i gridDims;
 };
 
 
