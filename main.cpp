@@ -11,9 +11,9 @@ extern "C" char deviceCode_ptx[];
 
 const char *sceneFileName = "scene.json";
 
-// Image dimensions 
-const int W = 512;
-const int H = 512;
+// Light dimensions 
+const int W = 2048;
+const int H = 2048;
 
 const vec2i fbSize(W, H);
 const vec3f lookUp(0.0f, 1.0f, 0.0f);

@@ -24,7 +24,7 @@ add_custom_command(TARGET app POST_BUILD
 )
 
 # ---- Copy all .obj files ----
-file(GLOB OBJ_FILES "${CMAKE_SOURCE_DIR}/*.obj")
+file(GLOB OBJ_FILES "${CMAKE_SOURCE_DIR}/meshes/*.obj")
 
 add_custom_command(TARGET app POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different

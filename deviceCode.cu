@@ -153,7 +153,7 @@ OPTIX_CLOSEST_HIT_PROGRAM(TriangleMesh)()
 
 	traverseGrid(
 		rayOrigin, rayDir, tHit,
-		prd.primaryGrid,
+		prd.depth == 0 ? prd.primaryGrid : prd.bounceGrid,
 		prd.gridOrigin, prd.gridCellSize, prd.gridDims
 	);
 
