@@ -7,6 +7,8 @@ struct LightSource
 {
     owl::vec3f position;
     int resX, resY;
+    bool isPunctual;
+    float fovDeg;
 };
 
 struct MeshInstance

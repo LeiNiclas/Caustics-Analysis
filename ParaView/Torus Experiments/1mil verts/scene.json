@@ -20,7 +20,7 @@
     ],
     "meshes": [
         {
-            "objPath": "TorusV3.obj",
+            "objPath": "TorusV4.obj",
             "position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -50,9 +50,9 @@
             "z": 8
         },
         "resolution": {
-            "x": 100,
-            "y": 100,
-            "z": 100
+            "x": 500,
+            "y": 500,
+            "z": 500
         }
     }
 }

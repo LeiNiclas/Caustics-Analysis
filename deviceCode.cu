@@ -98,12 +98,19 @@ OPTIX_RAYGEN_PROGRAM(rayGen)() // Name in parantheses must match name given in m
 
 	// Ray setup
 	owl::Ray ray;
-	ray.origin = self.camera.pos + screen.u * self.camera.dir_du + screen.v * self.camera.dir_dv;
-	ray.direction = normalize(
-		self.camera.dir_00
-//	+	screen.u * self.camera.dir_du
-//	+	screen.v * self.camera.dir_dv
-	);
+
+	if (self.isPunctual)
+	{
+		vec3f corner = self.camera.dir_00 - 0.5f * self.camera.dir_du - 0.5f * self.camera.dir_dv;
+		ray.origin = self.camera.pos;
+		ray.direction = normalize(corner + screen.u * self.camera.dir_du + screen.v * self.camera.dir_dv);
+	}
+	else
+	{
+		ray.origin = self.camera.pos + screen.u * self.camera.dir_du + screen.v * self.camera.dir_dv;
+		ray.direction = normalize(self.camera.dir_00);
+	}
+
 	
 	PRD prd;
 	prd.depth = 0;

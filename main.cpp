@@ -36,13 +36,29 @@ void setupCameraFromLight(OWLRayGen rayGen, OWLBuffer frameBuffer, OWLGroup worl
     vec3f pos = light.position;
     vec3f target = vec3f(0.0f, 0.0f, 0.0f);
     vec3f fwd = normalize(target - pos);
-
     float aspect = fbSize.x / float(fbSize.y);
-    vec3f right = orthoHeight * aspect * normalize(cross(fwd, lookUp));
-    vec3f up = orthoHeight * normalize(cross(right, fwd));
+    
+    vec3f right, up, origin;
 
-    // Origin of ray set to the bottom left corner
-    vec3f origin = pos - 0.5f * right - 0.5f * up;
+    if (light.isPunctual)
+    {
+        float halfFov = light.fovDeg * 0.5f * (3.1415926535f / 180.0f);
+        float halfH = tanf(halfFov);
+        float halfW = halfH * aspect;
+
+        vec3f rightUnit = normalize(cross(fwd, lookUp));
+        vec3f upUnit = normalize(cross(rightUnit, fwd));
+
+        right = 2.0f * halfW * rightUnit;
+        up = 2.0f * halfH * upUnit;
+        origin = pos;
+    }
+    else
+    {
+        right = orthoHeight * aspect * normalize(cross(fwd, lookUp));
+        up = orthoHeight * normalize(cross(right, fwd));
+        origin = pos - 0.5f * right - 0.5f * up;
+    }
 
     owlRayGenSetBuffer(rayGen, "fbPtr", frameBuffer);
     owlRayGenSet2i(rayGen, "fbSize", (const owl2i&)fbSize);
@@ -51,6 +67,7 @@ void setupCameraFromLight(OWLRayGen rayGen, OWLBuffer frameBuffer, OWLGroup worl
     owlRayGenSet3f(rayGen, "camera.dir_00", (const owl3f&)fwd);
     owlRayGenSet3f(rayGen, "camera.dir_du", (const owl3f&)right);
     owlRayGenSet3f(rayGen, "camera.dir_dv", (const owl3f&)up);
+    owlRayGenSet1i(rayGen, "isPunctual", light.isPunctual ? 1 : 0);
 }
 
 
@@ -200,6 +217,7 @@ int main(int ac, char **av){
         { "gridOrigin",     OWL_FLOAT3, OWL_OFFSETOF(RayGenData, gridOrigin)},
         { "gridCellSize",   OWL_FLOAT3, OWL_OFFSETOF(RayGenData, gridCellSize)},
         { "gridDims",       OWL_INT3,   OWL_OFFSETOF(RayGenData, gridDims)},
+        { "isPunctual",     OWL_INT,    OWL_OFFSETOF(RayGenData, isPunctual)},
         { /* sentinel to mark end of list */ }
     };
 
@@ -223,14 +241,6 @@ int main(int ac, char **av){
 
     owlBuildPrograms(context);
     owlBuildPipeline(context);
-
-    // ---- PERSPECTIVE CAMERA ----
-    // vec3f camera_ddu = cosFovy * aspect * normalize(cross(camera_d00, lookUp)); //right
-    // vec3f camera_ddv = cosFovy * normalize(cross(camera_ddu, camera_d00)); //up
-    // camera_d00 -= 0.5f * camera_ddu;
-    // camera_d00 -= 0.5f * camera_ddv;
-    
-    
 
     // -------- RENDER FOR EACH LIGHT SOURCE + SAVE PNG --------
     for (int i = 0; i < (int)scene.ligths.size(); ++i)

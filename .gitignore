@@ -1,1 +1,5 @@
 build
+
+*.vti
+*.mtl
+*TorusV4.obj

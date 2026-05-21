@@ -25,6 +25,7 @@ struct PRD
 
 struct RayGenData
 {
+    int isPunctual;
     uint32_t *fbPtr;
     vec2i fbSize;
     OptixTraversableHandle world;
