@@ -4,7 +4,7 @@
 
 void exportVTI(
     const std::string& filename,
-    const uint32_t* grid,
+    const float* grid,
     owl::vec3i dims,
     owl::vec3f origin,
     owl::vec3f cellSize,
@@ -42,7 +42,7 @@ void exportVTI(
     f << "  <AppendedData encoding=\"raw\">\n_";
 
     // Byte count -> data
-    f.write(reinterpret_cast<const char*>(&dataBytes), sizeof(uint32_t));
+    f.write(reinterpret_cast<const char*>(&dataBytes), sizeof(float));
     f.write(reinterpret_cast<const char*>(grid), dataBytes);
 
     f << "  </AppendedData>\n";

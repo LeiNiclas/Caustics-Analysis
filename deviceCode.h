@@ -15,8 +15,8 @@ struct PRD
     int depth;
 
     // Grid params
-    uint32_t *primaryGrid;
-    uint32_t *bounceGrid;
+    float* primaryGrid;
+    float* bounceGrid;
     vec3f gridOrigin;
     vec3f gridCellSize;
     vec3i gridDims;
@@ -37,8 +37,8 @@ struct RayGenData
         vec3f dir_dv;
     } camera;
 
-    uint32_t* primaryGrid;
-    uint32_t* bounceGrid;
+    float* primaryGrid;
+    float* bounceGrid;
     vec3f gridOrigin;
     vec3f gridCellSize;
     vec3i gridDims;

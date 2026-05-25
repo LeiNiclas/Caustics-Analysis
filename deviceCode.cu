@@ -12,7 +12,7 @@ __device__ void traverseGrid(
 	const vec3f& origin,
 	const vec3f& direction,
 	float tMax,
-	uint32_t* grid,
+	float* grid,
 	const vec3f& gridOrigin,
 	const vec3f& cellSize,
 	const vec3i& dims
@@ -20,10 +20,10 @@ __device__ void traverseGrid(
 {
 	vec3f posInGrid = (origin - gridOrigin) / cellSize;
 
-    int cx = (int)floorf(posInGrid.x);
-    int cy = (int)floorf(posInGrid.y);
-    int cz = (int)floorf(posInGrid.z);
-
+    int cellX = (int)floorf(posInGrid.x);
+    int cellY = (int)floorf(posInGrid.y);
+    int cellZ = (int)floorf(posInGrid.z);
+	
     int stepX = direction.x >= 0.f ? 1 : -1;
     int stepY = direction.y >= 0.f ? 1 : -1;
     int stepZ = direction.z >= 0.f ? 1 : -1;
@@ -33,16 +33,16 @@ __device__ void traverseGrid(
     float tDeltaZ = cellSize.z / fmaxf(fabsf(direction.z), 1e-8f);
 
     float nextX = (stepX > 0)
-        ? (ceilf(posInGrid.x)  - posInGrid.x) * cellSize.x / fmaxf(fabsf(direction.x), 1e-8f)
-        : (posInGrid.x - floorf(posInGrid.x)) * cellSize.x / fmaxf(fabsf(direction.x), 1e-8f);
+        ? (ceilf(posInGrid.x)  - posInGrid.x) * tDeltaX
+        : (posInGrid.x - floorf(posInGrid.x)) *	tDeltaX;
 
     float nextY = (stepY > 0)
-        ? (ceilf(posInGrid.y)  - posInGrid.y) * cellSize.y / fmaxf(fabsf(direction.y), 1e-8f)
-        : (posInGrid.y - floorf(posInGrid.y)) * cellSize.y / fmaxf(fabsf(direction.y), 1e-8f);
+        ? (ceilf(posInGrid.y)  - posInGrid.y) * tDeltaY
+        : (posInGrid.y - floorf(posInGrid.y)) * tDeltaY;
 
     float nextZ = (stepZ > 0)
-        ? (ceilf(posInGrid.z)  - posInGrid.z) * cellSize.z / fmaxf(fabsf(direction.z), 1e-8f)
-        : (posInGrid.z - floorf(posInGrid.z)) * cellSize.z / fmaxf(fabsf(direction.z), 1e-8f);
+        ? (ceilf(posInGrid.z)  - posInGrid.z) * tDeltaZ
+        : (posInGrid.z - floorf(posInGrid.z)) * tDeltaZ;
 
     // Edgecase: Ray starts on cell boundary
     if (nextX == 0.0f) nextX = tDeltaX;
@@ -50,15 +50,25 @@ __device__ void traverseGrid(
     if (nextZ == 0.0f) nextZ = tDeltaZ;
 
     float t = 0.f;
+	float tPrevious = 0.f;
 
     while (t < tMax)
     {
-        if (cx >= 0 && cx < dims.x &&
-            cy >= 0 && cy < dims.y &&
-            cz >= 0 && cz < dims.z)
+        if (cellX >= 0 && cellX < dims.x &&
+            cellY >= 0 && cellY < dims.y &&
+            cellZ >= 0 && cellZ < dims.z)
         {
-            int idx = cx + dims.x * cy + dims.x * dims.y * cz;
-            atomicAdd(&grid[idx], 1u);
+            int idx = cellX + dims.x * cellY + dims.x * dims.y * cellZ;
+			float length;
+
+			if (tPrevious == 0.f)
+				length = t;
+			else
+				length = t - tPrevious;
+			
+			tPrevious = t;
+
+            atomicAdd(&grid[idx], length); 
         }
         else if (t > 0.0f)
         {
@@ -70,19 +80,19 @@ __device__ void traverseGrid(
 		{
             t = nextX;
 			nextX += tDeltaX;
-			cx += stepX;
+			cellX += stepX;
         }
 		else if (nextY < nextZ)
 		{
             t = nextY;
 			nextY += tDeltaY;
-			cy += stepY;
+			cellY += stepY;
         }
 		else
 		{
             t = nextZ;
 			nextZ += tDeltaZ;
-			cz += stepZ;
+			cellZ += stepZ;
         }
     }
 }

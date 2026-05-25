@@ -131,10 +131,10 @@ int main(int ac, char **av){
     *counterInit = 0;
 
     // ---- Grid-Buffer ----
-    std::vector<uint32_t> zeros(totalCells, 0u);
+    std::vector<float> zeros(totalCells, 0.f);
 
-    OWLBuffer primaryGridBuffer = owlDeviceBufferCreate(context, OWL_INT, totalCells, zeros.data());
-    OWLBuffer bounceGridBuffer = owlDeviceBufferCreate(context, OWL_INT, totalCells, zeros.data());
+    OWLBuffer primaryGridBuffer = owlDeviceBufferCreate(context, OWL_FLOAT, totalCells, zeros.data());
+    OWLBuffer bounceGridBuffer = owlDeviceBufferCreate(context, OWL_FLOAT, totalCells, zeros.data());
 
     
     // -------- LOAD MESHES + BUILD GEOMETRY --------
@@ -275,13 +275,13 @@ int main(int ac, char **av){
     // primaryGridBuffer/bounceGridBuffer are device buffers; read back to host
     cudaDeviceSynchronize();
 
-    std::vector<uint32_t> hostPrimary(totalCells);
-    std::vector<uint32_t> hostBounce(totalCells);
+    std::vector<float> hostPrimary(totalCells);
+    std::vector<float> hostBounce(totalCells);
 
     cudaMemcpy(hostPrimary.data(), owlBufferGetPointer(primaryGridBuffer, 0),
-               totalCells * sizeof(uint32_t), cudaMemcpyDeviceToHost);
+               totalCells * sizeof(float), cudaMemcpyDeviceToHost);
     cudaMemcpy(hostBounce.data(), owlBufferGetPointer(bounceGridBuffer, 0),
-               totalCells * sizeof(uint32_t), cudaMemcpyDeviceToHost);
+               totalCells * sizeof(float), cudaMemcpyDeviceToHost);
 
     exportVTI("caustics_primary.vti", hostPrimary.data(), gridDims, gridOrigin, gridCellSize, "primary");
     exportVTI("caustics_bounce.vti", hostBounce.data(), gridDims, gridOrigin, gridCellSize, "bounce");
