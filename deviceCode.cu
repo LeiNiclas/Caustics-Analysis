@@ -1,6 +1,27 @@
 #include "deviceCode.h"
 #include <optix_device.h>
 
+// Taken from https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html?highlight=float2#atomic-functions
+#if __CUDA_ARCH__ < 600
+__device__ double atomicAdd(double* address, double val)
+{
+    unsigned long long int* address_as_ull =
+                              (unsigned long long int*)address;
+    unsigned long long int old = *address_as_ull, assumed;
+
+    do {
+        assumed = old;
+        old = atomicCAS(address_as_ull, assumed,
+                        __double_as_longlong(val +
+                               __longlong_as_double(assumed)));
+
+    // Note: uses integer comparison to avoid hang in case of NaN (since NaN != NaN)
+    } while (assumed != old);
+
+    return __longlong_as_double(old);
+}
+#endif
+
 
 // DDA Grid Traversal
 // origin:		start of ray in world coordinates
@@ -12,7 +33,7 @@ __device__ void traverseGrid(
 	const vec3f& origin,
 	const vec3f& direction,
 	float tMax,
-	float* grid,
+	double* grid,
 	const vec3f& gridOrigin,
 	const vec3f& cellSize,
 	const vec3i& dims
@@ -28,19 +49,19 @@ __device__ void traverseGrid(
     int stepY = direction.y >= 0.f ? 1 : -1;
     int stepZ = direction.z >= 0.f ? 1 : -1;
 
-    float tDeltaX = cellSize.x / fmaxf(fabsf(direction.x), 1e-8f);
-    float tDeltaY = cellSize.y / fmaxf(fabsf(direction.y), 1e-8f);
-    float tDeltaZ = cellSize.z / fmaxf(fabsf(direction.z), 1e-8f);
+    double tDeltaX = cellSize.x / fmaxf(fabsf(direction.x), 1e-8f);
+    double tDeltaY = cellSize.y / fmaxf(fabsf(direction.y), 1e-8f);
+    double tDeltaZ = cellSize.z / fmaxf(fabsf(direction.z), 1e-8f);
 
-    float nextX = (stepX > 0)
+    double nextX = (stepX > 0)
         ? (ceilf(posInGrid.x)  - posInGrid.x) * tDeltaX
         : (posInGrid.x - floorf(posInGrid.x)) *	tDeltaX;
 
-    float nextY = (stepY > 0)
+    double nextY = (stepY > 0)
         ? (ceilf(posInGrid.y)  - posInGrid.y) * tDeltaY
         : (posInGrid.y - floorf(posInGrid.y)) * tDeltaY;
 
-    float nextZ = (stepZ > 0)
+    double nextZ = (stepZ > 0)
         ? (ceilf(posInGrid.z)  - posInGrid.z) * tDeltaZ
         : (posInGrid.z - floorf(posInGrid.z)) * tDeltaZ;
 
@@ -49,8 +70,8 @@ __device__ void traverseGrid(
     if (nextY == 0.0f) nextY = tDeltaY;
     if (nextZ == 0.0f) nextZ = tDeltaZ;
 
-    float t = 0.f;
-	float tPrevious = 0.f;
+    double t = 0.0;
+	double tPrevious = 0.0;
 
     while (t < tMax)
     {
@@ -59,9 +80,9 @@ __device__ void traverseGrid(
             cellZ >= 0 && cellZ < dims.z)
         {
             int idx = cellX + dims.x * cellY + dims.x * dims.y * cellZ;
-			float length;
+			double length;
 
-			if (tPrevious == 0.f)
+			if (tPrevious == 0.0)
 				length = t;
 			else
 				length = t - tPrevious;

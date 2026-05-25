@@ -4,7 +4,7 @@
 
 void exportVTI(
     const std::string& filename,
-    const float* grid,
+    const double* grid,
     owl::vec3i dims,
     owl::vec3f origin,
     owl::vec3f cellSize,
@@ -16,7 +16,7 @@ void exportVTI(
         throw std::runtime_error("Could not open VTK file: " + filename);
 
     int totalCells = dims.x * dims.y * dims.z;
-    uint32_t dataBytes = totalCells * sizeof(uint32_t);
+    uint32_t dataBytes = totalCells * sizeof(double);
 
     f << "<?xml version=\"1.0\"?>\n";
     f << "<VTKFile type=\"ImageData\" version=\"0.1\" byte_order=\"LittleEndian\">\n";
@@ -34,7 +34,7 @@ void exportVTI(
       << "0 " << dims.z << "\">\n";
     
     f << "      <CellData Scalars=\"" << fieldName << "\">\n";
-    f << "        <DataArray type=\"UInt32\" Name=\"" << fieldName << "\""
+    f << "        <DataArray type=\"Float64\" Name=\"" << fieldName << "\""
       << " format=\"appended\" offset=\"0\"/>\n";
     f << "      </CellData>\n";
     f << "    </Piece>\n";

@@ -3,6 +3,8 @@ project(CausticsAnalysis LANGUAGES CXX CUDA)
 
 add_subdirectory(owl EXCLUDE_FROM_ALL)
 
+set(CMAKE_CUDA_ARCHITECTURES "native")
+
 add_executable(app main.cpp objLoader.cpp sceneLoader.cpp vtkExport.cpp)
 include_directories(${CMAKE_SOURCE_DIR})
 target_link_libraries(app PRIVATE owl::owl)

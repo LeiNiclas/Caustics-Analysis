@@ -4,7 +4,7 @@
 
 void exportVTI(
     const std::string& filename,
-    const float* grid,
+    const double* grid,
     owl::vec3i dims,
     owl::vec3f origin,
     owl::vec3f cellSize,
