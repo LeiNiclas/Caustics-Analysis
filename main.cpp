@@ -11,9 +11,16 @@ extern "C" char deviceCode_ptx[];
 
 const char *sceneFileName = "scene.json";
 
+// TODO
+// - Only start rays in small x range [x]
+// - Shoot many rays along small slice [x]
+// - Understand / fix control images [x]
+// - Implicit functions without SDFs
+// - (Make width + height / aspect ratio customizable in the settings)
+
 // Light dimensions 
-const int W = 4096;
-const int H = 4096;
+const int W = 1;
+const int H = pow(2, 20);
 
 const vec2i fbSize(W, H);
 const vec3f lookUp(0.0f, 1.0f, 0.0f);
@@ -99,7 +106,6 @@ int main(int ac, char **av){
     );
 
     owlGeomTypeSetClosestHit(trianglesGeomType, 0, module, "TriangleMesh");
-
 
     // -------- LOAD SCENE --------
     SceneConfig scene = loadScene(sceneFileName);

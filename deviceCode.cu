@@ -269,4 +269,97 @@ OPTIX_MISS_PROGRAM(miss)()
 
 	int pattern = (pixelID.x / 8) ^ (pixelID.y / 8);
 	prd.color = (pattern & 1) ? self.color1 : self.color0;
+
+}
+
+
+__device__ double torus(vec3d position, double R, double r)
+{
+	double term = (sqrt(position.x * position.x + position.y * position.y) - R);
+	term *= term;
+	term += position.z * position.z;
+	term -= r * r;
+
+	return term;
+}
+
+
+__device__ vec3d getPositionAlongRay(vec3d origin, vec3d dir, double t)
+{
+	return origin + t * dir;
+}
+
+
+
+OPTIX_INTERSECT_PROGRAM(ImplicitTorus)()
+{
+	const TorusGeomData& self = owl::getProgramData<TorusGeomData>();
+
+	vec3d rayOrigin = optixGetObjectRayOrigin();
+	vec3d rayDirection = optixGetObjectRayDirection();
+	
+	double minorRadius = self.minorRadius;
+	double majorRadius = self.majorRadius;
+
+	const double eps = 1e-9;
+	const double tMax = 10;
+	double t1 = 0.5;
+	double t2;
+	double tIncrementStep = 0.25;
+	
+	double val1 = torus(getPositionAlongRay(rayOrigin, rayDirection, t1), majorRadius, minorRadius);
+	double val2;
+
+	int maxSteps = 30;
+	int maxBisectionSteps = 10;
+
+	bool signChangeIntervalFound = false;
+	
+	// March to find interval with sign change
+	for (int step = 0; step < maxSteps; step++)
+	{
+		t2 = t1 + tIncrementStep;
+
+		if (t2 > tMax)
+			t2 = tMax;
+		
+		val2 = torus(getPositionAlongRay(rayOrigin, rayDirection, t2), majorRadius, minorRadius);
+
+		if (signbit(val1) != signbit(val2))
+		{
+			signChangeIntervalFound = true;
+			break;
+		}
+		
+		t1 = t2;
+		val1 = val2;
+	}
+
+	// No sign change found
+	if (!signChangeIntervalFound)
+		return;
+	
+	// Bisection
+	double tMid;
+
+	for (int i = 0; i < maxBisectionSteps; i++)
+	{
+		tMid = (t1 + t2) * 0.5;
+		double valMid = torus(getPositionAlongRay(rayOrigin, rayDirection, tMid), majorRadius, minorRadius);
+
+		if (abs(valMid) < eps)
+			break;
+		
+		if (signbit(valMid) != signbit(val1))
+		{
+			val2 = tMid;
+		}
+		else
+		{
+			val1 = tMid;
+		}
+	}
+
+	double tHit = tMid;
+	optixReportIntersection(tHit, 0);
 }

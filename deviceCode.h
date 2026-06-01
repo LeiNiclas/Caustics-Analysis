@@ -60,3 +60,13 @@ struct MissProgData
     vec3f color0; 
     vec3f color1;
 };
+
+
+struct TorusGeomData
+{
+    vec3f center;
+    float minorRadius;
+    float majorRadius;
+    float height;
+    OptixTraversableHandle world;
+};
