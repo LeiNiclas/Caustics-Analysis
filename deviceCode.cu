@@ -163,74 +163,6 @@ OPTIX_RAYGEN_PROGRAM(rayGen)() // Name in parantheses must match name given in m
 	self.fbPtr[fbOfs] = owl::make_rgba(prd.color);
 }
 
-// Closest Hit Program for the triangle mesh
-OPTIX_CLOSEST_HIT_PROGRAM(TriangleMesh)()
-{
-	PRD &prd = owl::getPRD<PRD>();
-
-	//self = face 
-	const TrianglesGeomData &self = owl::getProgramData<TrianglesGeomData>();
-
-	// Compute normal
-	const int primitiveID = optixGetPrimitiveIndex();
-	const vec3i index = self.index[primitiveID];
-	const vec3f &A = self.vertex[index.x];
-	const vec3f &B = self.vertex[index.y];
-	const vec3f &C = self.vertex[index.z];
-	vec3f Ng = normalize(cross(B-A, C-A));
-
-	const vec3f rayDir = optixGetWorldRayDirection();
-	const vec3f rayOrigin = optixGetWorldRayOrigin();
-	const float tHit = optixGetRayTmax();
-	
-	if (dot(Ng, rayDir) > 0.0f)
-		Ng = -Ng;
-	
-	vec3f hitPoint = rayOrigin + tHit * rayDir;
-	vec3f directColor = (0.2f + 0.8f * fabs(dot(rayDir, Ng))) * self.color;
-
-	traverseGrid(
-		rayOrigin, rayDir, tHit,
-		prd.depth == 0 ? prd.primaryGrid : prd.bounceGrid,
-		prd.gridOrigin, prd.gridCellSize, prd.gridDims
-	);
-
-	// increment hit counter stored in the triangle's SBT data
-	atomicAdd(self.counter, 1u);
-
-	if (prd.depth < 1)
-	{
-		// ---- BOUNCE ----
-        // Reflection: r = d - 2*(d·n)*n
-        const vec3f reflected = rayDir - 2.f * dot(rayDir, Ng) * Ng;
-
-        // Setup seconday ray
-        // small offset along normal
-        owl::Ray secRay;
-        secRay.origin    = hitPoint + 1e-3f * Ng;
-        secRay.direction = normalize(reflected);
-
-        PRD secPRD;
-        secPRD.depth = prd.depth + 1;  // = 1, no more bounces
-        secPRD.color = vec3f(0.f);
-		secPRD.primaryGrid = prd.primaryGrid;
-		secPRD.bounceGrid = prd.bounceGrid;
-		secPRD.gridOrigin = prd.gridOrigin;
-		secPRD.gridCellSize = prd.gridCellSize;
-		secPRD.gridDims = prd.gridDims;
-
-        // Trace secondary ray (world from GeomData)
-        owl::traceRay(self.world, secRay, secPRD);
-
-        prd.color = 0.5f * directColor + 0.5f * secPRD.color;
-    }
-	else
-	{
-        // Max bounces reached
-        prd.color = directColor;
-	}
-}
-
 
 OPTIX_MISS_PROGRAM(miss)()
 {
@@ -272,10 +204,19 @@ OPTIX_MISS_PROGRAM(miss)()
 
 }
 
+__device__ vec3f torusNormal(vec3f position, float R){
+    vec3f normal;
+    float sqroot = owl::sqrt(position.x * position.x + position.y * position.y);
+    float factor = 2.0f * (1.0f - R / sqroot);
+    normal.x = position.x * factor;
+    normal.y = position.y * factor;
+    normal.z = position.z * 2.0f;
+    return normalize(normal);
+}
 
-__device__ double torus(vec3d position, double R, double r)
+__device__ float torus(vec3f position, float R, float r)
 {
-	double term = (sqrt(position.x * position.x + position.y * position.y) - R);
+	float term = (owl::sqrt(position.x * position.x + position.y * position.y) - R);
 	term *= term;
 	term += position.z * position.z;
 	term -= r * r;
@@ -284,7 +225,7 @@ __device__ double torus(vec3d position, double R, double r)
 }
 
 
-__device__ vec3d getPositionAlongRay(vec3d origin, vec3d dir, double t)
+__device__ vec3f getPositionAlongRay(vec3f origin, vec3f dir, float t)
 {
 	return origin + t * dir;
 }
@@ -295,23 +236,23 @@ OPTIX_INTERSECT_PROGRAM(ImplicitTorus)()
 {
 	const TorusGeomData& self = owl::getProgramData<TorusGeomData>();
 
-	vec3d rayOrigin = optixGetObjectRayOrigin();
-	vec3d rayDirection = optixGetObjectRayDirection();
+	vec3f rayOrigin = optixGetObjectRayOrigin();
+	vec3f rayDirection = optixGetObjectRayDirection();
 	
-	double minorRadius = self.minorRadius;
-	double majorRadius = self.majorRadius;
+	float minorRadius = self.minorRadius;
+	float majorRadius = self.majorRadius;
 
-	const double eps = 1e-9;
-	const double tMax = 10;
-	double t1 = 0.5;
-	double t2;
-	double tIncrementStep = 0.25;
+	const float eps = 1e-6;
+	const float tMax = 50;
+	float t1 = 0.0;
+	float t2;
+	float tIncrementStep = 0.25;
 	
-	double val1 = torus(getPositionAlongRay(rayOrigin, rayDirection, t1), majorRadius, minorRadius);
-	double val2;
+	float val1 = torus(getPositionAlongRay(rayOrigin, rayDirection, t1), majorRadius, minorRadius);
+	float val2;
 
-	int maxSteps = 30;
-	int maxBisectionSteps = 10;
+	int maxSteps = 100;
+	int maxBisectionSteps = 50;
 
 	bool signChangeIntervalFound = false;
 	
@@ -340,26 +281,89 @@ OPTIX_INTERSECT_PROGRAM(ImplicitTorus)()
 		return;
 	
 	// Bisection
-	double tMid;
+	float tMid;
 
 	for (int i = 0; i < maxBisectionSteps; i++)
 	{
 		tMid = (t1 + t2) * 0.5;
-		double valMid = torus(getPositionAlongRay(rayOrigin, rayDirection, tMid), majorRadius, minorRadius);
+		float valMid = torus(getPositionAlongRay(rayOrigin, rayDirection, tMid), majorRadius, minorRadius);
 
 		if (abs(valMid) < eps)
 			break;
 		
 		if (signbit(valMid) != signbit(val1))
 		{
-			val2 = tMid;
+			t2 = tMid;
+			val2 = valMid;
 		}
 		else
 		{
-			val1 = tMid;
+			t1 = tMid;
+			val1 = valMid;
 		}
 	}
 
-	double tHit = tMid;
+	float tHit = tMid;
 	optixReportIntersection(tHit, 0);
+}
+
+
+// Closest Hit Program for the implicit torus
+OPTIX_CLOSEST_HIT_PROGRAM(ImplicitTorus)()
+{
+    PRD& prd = owl::getPRD<PRD>();
+
+    const TorusGeomData& self = owl::getProgramData<TorusGeomData>();
+
+    const vec3f rayOrigin = optixGetWorldRayOrigin();
+    const vec3f rayDir    = optixGetWorldRayDirection();
+    const float tHit      = optixGetRayTmax();
+    vec3f hitPoint = rayOrigin + tHit * rayDir;
+
+    vec3f normal3d = torusNormal(hitPoint, self.majorRadius);
+    vec3f normal = normalize(normal3d);
+    if (dot(normal, rayDir) > 0.f) normal = -normal;
+
+    vec3f directColor = (0.2f + 0.8f * fabsf(dot(rayDir, normal))) * vec3f(0.2f, 0.6f, 1.0f);
+
+    traverseGrid(
+        rayOrigin, rayDir, tHit,
+        prd.depth == 0 ? prd.primaryGrid : prd.bounceGrid,
+        prd.gridOrigin, prd.gridCellSize, prd.gridDims
+    );
+
+    if (prd.depth < 1)
+    {
+        vec3f reflected = rayDir - 2.f * dot(rayDir, normal) * normal;
+
+        owl::Ray secRay;
+        secRay.origin    = hitPoint + 1e-3f * normal;
+        secRay.direction = normalize(reflected);
+
+        PRD secPRD;
+        secPRD.depth        = prd.depth + 1;
+        secPRD.color        = vec3f(0.f);
+        secPRD.primaryGrid  = prd.primaryGrid;
+        secPRD.bounceGrid   = prd.bounceGrid;
+        secPRD.gridOrigin   = prd.gridOrigin;
+        secPRD.gridCellSize = prd.gridCellSize;
+        secPRD.gridDims     = prd.gridDims;
+
+        owl::traceRay(self.world, secRay, secPRD);
+        prd.color = 0.5f * directColor + 0.5f * secPRD.color;
+    }
+    else
+    {
+        prd.color = directColor;
+    }
+}
+
+OPTIX_BOUNDS_PROGRAM(ImplicitTorus)(const void* geomData, box3f& bounds, int primID)
+{
+    const TorusGeomData& self = *(const TorusGeomData*)geomData;
+    float outer = self.majorRadius + self.minorRadius;
+    float tube  = self.minorRadius;
+
+    bounds.lower = vec3f(-outer, -outer, -tube);
+    bounds.upper = vec3f( outer,  outer,  tube);
 }

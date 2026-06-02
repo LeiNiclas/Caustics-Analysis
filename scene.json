@@ -2,7 +2,7 @@
     "lights": [
         {
             "type": "punctual",
-            "fovDeg": 90.0,
+            "fovDeg": 45.0,
             "position": {
                 "x": 0.0,
                 "y": 0.0,

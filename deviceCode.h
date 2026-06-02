@@ -64,9 +64,7 @@ struct MissProgData
 
 struct TorusGeomData
 {
-    vec3f center;
     float minorRadius;
     float majorRadius;
-    float height;
     OptixTraversableHandle world;
 };

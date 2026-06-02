@@ -19,8 +19,8 @@ const char *sceneFileName = "scene.json";
 // - (Make width + height / aspect ratio customizable in the settings)
 
 // Light dimensions 
-const int W = 1;
-const int H = pow(2, 20);
+const int W = pow(2, 11);
+const int H = pow(2, 11);
 
 const vec2i fbSize(W, H);
 const vec3f lookUp(0.0f, 1.0f, 0.0f);
@@ -88,33 +88,58 @@ int main(int ac, char **av){
 
     // -------- VAR DECLARATIONS & GEOMETRY INITIALIZATION --------
     // Geometry type needs to be in deviceCode.h
-    OWLVarDecl trianglesGeomVars[] = {
-        { "index", OWL_BUFPTR, OWL_OFFSETOF(TrianglesGeomData, index) },
-        { "vertex", OWL_BUFPTR, OWL_OFFSETOF(TrianglesGeomData, vertex) },
-        { "color", OWL_FLOAT3, OWL_OFFSETOF(TrianglesGeomData, color) },
-        { "counter", OWL_BUFPTR, OWL_OFFSETOF(TrianglesGeomData, counter) },
-        { "world", OWL_GROUP, OWL_OFFSETOF(TrianglesGeomData, world)}
+    // OWLVarDecl trianglesGeomVars[] = {
+    //     { "index", OWL_BUFPTR, OWL_OFFSETOF(TrianglesGeomData, index) },
+    //     { "vertex", OWL_BUFPTR, OWL_OFFSETOF(TrianglesGeomData, vertex) },
+    //     { "color", OWL_FLOAT3, OWL_OFFSETOF(TrianglesGeomData, color) },
+    //     { "counter", OWL_BUFPTR, OWL_OFFSETOF(TrianglesGeomData, counter) },
+    //     { "world", OWL_GROUP, OWL_OFFSETOF(TrianglesGeomData, world)}
+    // };
+
+    // 
+    // OWLGeomType trianglesGeomType = owlGeomTypeCreate(
+    //     context,                    // Context
+    //     OWL_TRIANGLES,              // Geometry type
+    //     sizeof(TrianglesGeomData),  // Size
+    //     trianglesGeomVars,          // Variables
+    //     5                           // # of variables
+    // );
+// 
+    // owlGeomTypeSetClosestHit(trianglesGeomType, 0, module, "TriangleMesh");
+
+
+    OWLVarDecl implicitTorusVars[] = {
+        { "minorRadius", OWL_FLOAT, OWL_OFFSETOF(TorusGeomData, minorRadius) },
+        { "majorRadius", OWL_FLOAT, OWL_OFFSETOF(TorusGeomData, majorRadius) },
+        { "world", OWL_GROUP, OWL_OFFSETOF(TorusGeomData, world) }
     };
 
-    
-    OWLGeomType trianglesGeomType = owlGeomTypeCreate(
-        context,                    // Context
-        OWL_TRIANGLES,              // Geometry type
-        sizeof(TrianglesGeomData),  // Size
-        trianglesGeomVars,          // Variables
-        5                           // # of variables
+    OWLGeomType implicitTorusGeomType = owlGeomTypeCreate(
+        context,
+        OWL_GEOM_USER,
+        sizeof(TorusGeomData),
+        implicitTorusVars,
+        3
     );
 
-    owlGeomTypeSetClosestHit(trianglesGeomType, 0, module, "TriangleMesh");
+    owlGeomTypeSetIntersectProg(implicitTorusGeomType, 0, module, "ImplicitTorus");
+    owlGeomTypeSetClosestHit(implicitTorusGeomType, 0, module, "ImplicitTorus");
+    owlGeomTypeSetBoundsProg(implicitTorusGeomType, module, "ImplicitTorus");
+
+    OWLGeom torusGeom = owlGeomCreate(context, implicitTorusGeomType);
+    owlGeomSet1f(torusGeom, "majorRadius", 1.0f);
+    owlGeomSet1f(torusGeom, "minorRadius", 0.5f);
+    owlGeomSetPrimCount(torusGeom, 1);
+
 
     // -------- LOAD SCENE --------
     SceneConfig scene = loadScene(sceneFileName);
 
-    if (scene.meshes.empty())
-    {
-        std::cerr << "No meshes in scene.json." << std::endl;
-        return 1;
-    }
+    // if (scene.meshes.empty())
+    // {
+    //     std::cerr << "No meshes in scene.json." << std::endl;
+    //     return 1;
+    // }
     if (scene.ligths.empty())
     {
         std::cerr << "No light sources in scene.json." << std::endl;
@@ -141,52 +166,6 @@ int main(int ac, char **av){
 
     OWLBuffer primaryGridBuffer = owlDeviceBufferCreate(context, OWL_USER_TYPE(double), totalCells, zeros.data());
     OWLBuffer bounceGridBuffer = owlDeviceBufferCreate(context, OWL_USER_TYPE(double), totalCells, zeros.data());
-
-    
-    // -------- LOAD MESHES + BUILD GEOMETRY --------
-    std::vector<OWLGroup> geomGroups;
-    std::vector<OWLBuffer> vertexBuffers;
-    std::vector<OWLBuffer> indexBuffers;
-    std::vector<OWLGeom> geoms;
-
-
-    for (const MeshInstance& meshInst : scene.meshes)
-    {
-        // Load .obj and apply transform
-        TriangleMesh mesh = loadObj(meshInst.objPath);
-        applyTransform(mesh, meshInst.position, meshInst.rotation, meshInst.scale);
-
-        OWLBuffer vb = owlDeviceBufferCreate(context, OWL_FLOAT3, mesh.vertices.size(), mesh.vertices.data());
-        OWLBuffer ib = owlDeviceBufferCreate(context, OWL_INT3, mesh.indices.size(), mesh.indices.data());
-
-        vertexBuffers.push_back(vb);
-        indexBuffers.push_back(ib);
-
-        OWLGeom geom = owlGeomCreate(context, trianglesGeomType);
-
-        owlTrianglesSetVertices(geom, vb, mesh.vertices.size(), sizeof(vec3f), 0);
-        owlTrianglesSetIndices(geom, ib, mesh.indices.size(), sizeof(vec3i), 0);
-
-        owlGeomSetBuffer(geom, "vertex", vb);
-        owlGeomSetBuffer(geom, "index", ib);
-        owlGeomSetBuffer(geom, "counter", counterBuffer);
-        owlGeomSet3f(geom, "color", owl3f{0.0f, 1.0f, 0.0f});
-
-        geoms.push_back(geom);
-
-        OWLGroup triGroup = owlTrianglesGeomGroupCreate(context, 1, &geom);
-        owlGroupBuildAccel(triGroup);
-        geomGroups.push_back(triGroup);
-    }
-
-    OWLGroup world = owlInstanceGroupCreate(context, (uint32_t)geomGroups.size(), geomGroups.data());
-
-    owlGroupBuildAccel(world);
-
-    // Set world handle for every geometry (Used for Bounce-Rays)
-    for (OWLGeom geom : geoms)
-        owlGeomSetGroup(geom, "world", world);
-    
 
     // -------- RAY GENERATION SHADER SETUP --------
     // ---- Miss Program ----
@@ -248,6 +227,14 @@ int main(int ac, char **av){
     owlBuildPrograms(context);
     owlBuildPipeline(context);
 
+    OWLGroup torusGroup = owlUserGeomGroupCreate(context, 1, &torusGeom);
+    owlGroupBuildAccel(torusGroup);
+
+    OWLGroup world = owlInstanceGroupCreate(context, 1, &torusGroup);
+    owlGroupBuildAccel(world);
+
+    owlGeomSetGroup(torusGeom, "world", world);
+
     // -------- RENDER FOR EACH LIGHT SOURCE + SAVE PNG --------
     for (int i = 0; i < (int)scene.ligths.size(); ++i)
     {
@@ -300,8 +287,8 @@ int main(int ac, char **av){
     // -------- CLEAN UP --------
     owlBufferRelease(frameBuffer);
     owlBufferRelease(counterBuffer);
-    for (auto& vb : vertexBuffers) owlBufferRelease(vb);
-    for (auto& ib : indexBuffers) owlBufferRelease(ib);
+    // for (auto& vb : vertexBuffers) owlBufferRelease(vb);
+    // for (auto& ib : indexBuffers) owlBufferRelease(ib);
     owlRayGenRelease(rayGen);
     owlModuleRelease(module);
     owlContextDestroy(context);
