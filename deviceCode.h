@@ -35,6 +35,7 @@ struct RayGenData
         vec3f dir_00;
         vec3f dir_du;
         vec3f dir_dv;
+        float coneAngle;
     } camera;
 
     double* primaryGrid;

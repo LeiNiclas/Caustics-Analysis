@@ -9,6 +9,7 @@ struct LightSource
     int resX, resY;
     bool isPunctual;
     float fovDeg;
+    float coneAngle;
 };
 
 struct MeshInstance

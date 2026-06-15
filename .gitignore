@@ -1,5 +1,7 @@
 build
 
+.vscode
+
 *.vti
 *.mtl
 *TorusV4.obj

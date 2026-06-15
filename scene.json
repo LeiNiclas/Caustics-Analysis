@@ -3,6 +3,7 @@
         {
             "type": "punctual",
             "fovDeg": 45.0,
+            "coneAngle": 45.0,
             "position": {
                 "x": 0.0,
                 "y": 0.0,

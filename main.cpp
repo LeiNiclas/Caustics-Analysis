@@ -75,6 +75,7 @@ void setupCameraFromLight(OWLRayGen rayGen, OWLBuffer frameBuffer, OWLGroup worl
     owlRayGenSet3f(rayGen, "camera.dir_du", (const owl3f&)right);
     owlRayGenSet3f(rayGen, "camera.dir_dv", (const owl3f&)up);
     owlRayGenSet1i(rayGen, "isPunctual", light.isPunctual ? 1 : 0);
+    owlRayGenSet1f(rayGen, "coneAngle", light.coneAngle);
 }
 
 
@@ -203,6 +204,7 @@ int main(int ac, char **av){
         { "gridCellSize",   OWL_FLOAT3, OWL_OFFSETOF(RayGenData, gridCellSize)},
         { "gridDims",       OWL_INT3,   OWL_OFFSETOF(RayGenData, gridDims)},
         { "isPunctual",     OWL_INT,    OWL_OFFSETOF(RayGenData, isPunctual)},
+        { "coneAngle",      OWL_FLOAT,  OWL_OFFSETOF(RayGenData, camera.coneAngle)},
         { /* sentinel to mark end of list */ }
     };
 

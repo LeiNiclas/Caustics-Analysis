@@ -132,9 +132,35 @@ OPTIX_RAYGEN_PROGRAM(rayGen)() // Name in parantheses must match name given in m
 
 	if (self.isPunctual)
 	{
-		vec3f corner = self.camera.dir_00 - 0.5f * self.camera.dir_du - 0.5f * self.camera.dir_dv;
+		float u = screen.u;
+		float v = screen.v;
+
+		// Golden ratio offset per row -> breaks phi-coherence
+		float phi = 2.0f * M_PI * fmodf(screen.u + pixelID.y * 0.618033988749f, 1.0f);
+		float cosMax   = cosf(self.camera.coneAngle);
+		float cosTheta = 1.0f - screen.v * (1.0f - cosMax);
+		float sinTheta = sqrtf(fmaxf(0.0f, 1.0f - cosTheta * cosTheta));
+
+		vec3f localDir;
+		localDir.x = sinTheta * cosf(phi);
+		localDir.y = sinTheta * sinf(phi);
+		localDir.z = cosTheta;
+
+		// World coordinates
+		vec3f fwd = normalize(self.camera.dir_00);
+		vec3f hint = (fabs(dot(fwd, self.camera.dir_dv)) < 0.99f) // Fallback (fwd parallel to dir_dv)
+				   ? self.camera.dir_dv
+				   : vec3f(0.0f, 0.0f, 1.0f);
+
+		vec3f right = normalize(cross(fwd, self.camera.dir_dv));
+		vec3f up = cross(right, fwd);
+
+		vec3f worldDir = localDir.x * right
+					   + localDir.y * up
+					   + localDir.z * fwd;
+		
 		ray.origin = self.camera.pos;
-		ray.direction = normalize(corner + screen.u * self.camera.dir_du + screen.v * self.camera.dir_dv);
+		ray.direction = normalize(worldDir);
 	}
 	else
 	{

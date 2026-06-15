@@ -15,13 +15,15 @@ SceneConfig loadScene(const std::string& path)
     {
         bool isPunctual = light.value("type", "orthographic") == "punctual";
         float fov = light.value("fovDeg", 90.0f);
+        float coneAngle = light.value("coneAngle", 90.0f) * M_PI / 180.0f;
 
         scene.ligths.push_back(
             {
                 { light["position"]["x"], light["position"]["y"], light["position"]["z"] },
                 light["resolutionX"], light["resolutionY"],
                 isPunctual,
-                fov
+                fov,
+                coneAngle
             }
         );
     }
