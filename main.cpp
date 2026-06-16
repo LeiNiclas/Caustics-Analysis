@@ -278,8 +278,8 @@ int main(int ac, char **av){
     cudaMemcpy(hostBounce.data(), owlBufferGetPointer(bounceGridBuffer, 0),
                totalCells * sizeof(double), cudaMemcpyDeviceToHost);
 
-    exportVTI("caustics_primary.vti", hostPrimary.data(), gridDims, gridOrigin, gridCellSize, "primary");
-    exportVTI("caustics_bounce.vti", hostBounce.data(), gridDims, gridOrigin, gridCellSize, "bounce");
+    exportVTI("caustics_primary.vtu", hostPrimary.data(), gridDims, gridOrigin, gridCellSize, "primary");
+    exportVTI("caustics_bounce.vtu", hostBounce.data(), gridDims, gridOrigin, gridCellSize, "bounce");
 
     // read back the counter from the host-pinned buffer
     const uint32_t *counterPtr = (const uint32_t*)owlBufferGetPointer(counterBuffer, 0);
