@@ -1,6 +1,8 @@
 #include "deviceCode.h"
 #include <optix_device.h>
 
+// Paraboloid
+
 // Taken from https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html?highlight=float2#atomic-functions
 #if __CUDA_ARCH__ < 600
 __device__ double atomicAdd(double* address, double val)
@@ -276,6 +278,7 @@ __device__ vec3f getPositionAlongRay(vec3f origin, vec3f dir, float t)
 }
 
 
+
 OPTIX_INTERSECT_PROGRAM(ImplicitTorus)()
 {
 	const TorusGeomData& self = owl::getProgramData<TorusGeomData>();
@@ -399,7 +402,6 @@ OPTIX_CLOSEST_HIT_PROGRAM(ImplicitTorus)()
         prd.color = directColor;
     }
 }
-
 
 OPTIX_BOUNDS_PROGRAM(ImplicitTorus)(const void* geomData, box3f& bounds, int primID)
 {

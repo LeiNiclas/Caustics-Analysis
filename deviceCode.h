@@ -69,3 +69,9 @@ struct TorusGeomData
     float majorRadius;
     OptixTraversableHandle world;
 };
+
+
+struct ParabolaGeomData
+{
+    OptixTraversableHandle world;
+};

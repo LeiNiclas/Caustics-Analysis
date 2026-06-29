@@ -11,13 +11,6 @@ extern "C" char deviceCode_ptx[];
 
 const char *sceneFileName = "scene.json";
 
-// TODO
-// - Only start rays in small x range [x]
-// - Shoot many rays along small slice [x]
-// - Understand / fix control images [x]
-// - Implicit functions without SDFs
-// - (Make width + height / aspect ratio customizable in the settings)
-
 // Light dimensions 
 const int W = pow(2, 11);
 const int H = pow(2, 11);
@@ -28,7 +21,7 @@ const float orthoHeight = 1.0f;
 
 #define LOG(message)                                            \
     std::cout << OWL_TERMINAL_BLUE;                             \
-    std::cout << "context.sample(main): " << mesag << std::endl;    \
+    std::cout << "context.sample(main): " << message << std::endl;    \
     std::cout << OWL_TERMINAL_DEFAULT;
 
 #define LOG_OK(message)                                         \
