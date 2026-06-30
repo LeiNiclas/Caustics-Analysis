@@ -123,7 +123,7 @@ int main(int ac, char **av){
 
     // -------- DEFINE IMPLICIT SURFACE --------
     OWLGeom implicitGeom = owlGeomCreate(context, implicitGeomType);
-    owlGeomSet1i(implicitGeom, "type", IMPLICIT_PERTUBED_PARABOLOID);
+    owlGeomSet1i(implicitGeom, "type", IMPLICIT_CUSHION_SURFACE);
     owlGeomSet1f(implicitGeom, "param0", 0.3f);
     owlGeomSet1f(implicitGeom, "param1", 2.0f);
     owlGeomSetPrimCount(implicitGeom, 1);

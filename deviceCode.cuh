@@ -89,6 +89,34 @@ __device__ inline vec3f pertubedParaboloidNormal(vec3f position, float amplitude
 }
 
 
+__device__ inline float cushionSurface(vec3f position)
+{
+    float x = position.x;
+    float y = position.y;
+    float z = position.z;
+
+    float term = z*z * x*x - z*z*z*z - 2*z*x*x + 2*z*z*z + x*x - z*z;
+    term = term - (x*x - z*z)*(x*x - z*z) - y*y*y*y - 2*x*x*y*y - y*y*z*z + 2*y*y*z + y*y;
+    return term;
+}
+
+
+__device__ inline vec3f cushionSurfaceNormal(vec3f position)
+{
+    float x = position.x;
+    float y = position.y;
+    float z = position.z;
+
+    vec3f normal;
+
+    normal.x = -4*x*x*x - 4*x*y*y + 2*x*z*z + 2*x;
+    normal.y = -4*x*x*y - 4*y*y*y - 2*y*z*z + 4*y*z + 2*y;
+    normal.z = 2*x*x*z - 2*y*y*z + 2*y*y - 4*z*z*z + 6*z*z - 4*z;
+
+    return normalize(normal);
+}
+
+
 __device__ inline float evalImplicit(ImplicitType type, vec3f position, float p0, float p1)
 {
     switch (type)
@@ -97,6 +125,7 @@ __device__ inline float evalImplicit(ImplicitType type, vec3f position, float p0
         case IMPLICIT_PARABOLA: return parabola(position);
         case IMPLICIT_GYROID: return gyroid(position, p0);
         case IMPLICIT_PERTUBED_PARABOLOID: return pertubedParaboloid(position, p0, p1);
+        case IMPLICIT_CUSHION_SURFACE: return cushionSurface(position);
         default: return 1.0f;
     }
 }
@@ -110,6 +139,7 @@ __device__ inline vec3f evalImplicitNormal(ImplicitType type, vec3f position, fl
         case IMPLICIT_PARABOLA: return parabolaNormal(position);
         case IMPLICIT_GYROID: return gyroidNormal(position);
         case IMPLICIT_PERTUBED_PARABOLOID: return pertubedParaboloidNormal(position, p0, p1);
+        case IMPLICIT_CUSHION_SURFACE: return cushionSurfaceNormal(position);
         default: return vec3f(1.0f);
     }
 }
