@@ -65,7 +65,27 @@ __device__ inline vec3f gyroidNormal(vec3f position)
     float sz = sinf(z);
     float cz = cosf(z);
 
-    return vec3f(cx*cy-sx*sz, cy*cz-sx*sy, cx*cz-sy*sz);
+    return normalize(vec3f(cx*cy-sx*sz, cy*cz-sx*sy, cx*cz-sy*sz));
+}
+
+
+__device__ inline float pertubedParaboloid(vec3f position, float amplitude, float omega)
+{
+    return position.x * position.x
+         + position.y * position.y
+         + amplitude * sinf(omega * position.x)
+         - position.z;
+}
+
+
+__device__ inline vec3f pertubedParaboloidNormal(vec3f position, float amplitude, float omega)
+{
+    vec3f normal;
+    normal.x = 2.0f * position.x + amplitude * omega * cosf(omega * position.x);
+    normal.y = 2.0f * position.y;
+    normal.z = -1.0f;
+
+    return normalize(normal);
 }
 
 
@@ -76,6 +96,7 @@ __device__ inline float evalImplicit(ImplicitType type, vec3f position, float p0
         case IMPLICIT_TORUS: return torus(position, p0, p1);
         case IMPLICIT_PARABOLA: return parabola(position);
         case IMPLICIT_GYROID: return gyroid(position, p0);
+        case IMPLICIT_PERTUBED_PARABOLOID: return pertubedParaboloid(position, p0, p1);
         default: return 1.0f;
     }
 }
@@ -88,6 +109,7 @@ __device__ inline vec3f evalImplicitNormal(ImplicitType type, vec3f position, fl
         case IMPLICIT_TORUS: return torusNormal(position, p0);
         case IMPLICIT_PARABOLA: return parabolaNormal(position);
         case IMPLICIT_GYROID: return gyroidNormal(position);
+        case IMPLICIT_PERTUBED_PARABOLOID: return pertubedParaboloidNormal(position, p0, p1);
         default: return vec3f(1.0f);
     }
 }
