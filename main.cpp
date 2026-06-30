@@ -102,28 +102,31 @@ int main(int ac, char **av){
     // owlGeomTypeSetClosestHit(trianglesGeomType, 0, module, "TriangleMesh");
 
 
-    OWLVarDecl implicitTorusVars[] = {
-        { "minorRadius", OWL_FLOAT, OWL_OFFSETOF(TorusGeomData, minorRadius) },
-        { "majorRadius", OWL_FLOAT, OWL_OFFSETOF(TorusGeomData, majorRadius) },
-        { "world", OWL_GROUP, OWL_OFFSETOF(TorusGeomData, world) }
+    OWLVarDecl implicitGeomVars[] = {
+        { "type", OWL_INT, OWL_OFFSETOF(ImplicitGeomData, type) },
+        { "param0", OWL_FLOAT, OWL_OFFSETOF(ImplicitGeomData, param0) },
+        { "param1", OWL_FLOAT, OWL_OFFSETOF(ImplicitGeomData, param1) },
+        { "world", OWL_GROUP, OWL_OFFSETOF(ImplicitGeomData, world) }
     };
 
-    OWLGeomType implicitTorusGeomType = owlGeomTypeCreate(
+    OWLGeomType implicitGeomType = owlGeomTypeCreate(
         context,
         OWL_GEOM_USER,
-        sizeof(TorusGeomData),
-        implicitTorusVars,
-        3
+        sizeof(implicitGeomVars),
+        implicitGeomVars,
+        4
     );
 
-    owlGeomTypeSetIntersectProg(implicitTorusGeomType, 0, module, "ImplicitTorus");
-    owlGeomTypeSetClosestHit(implicitTorusGeomType, 0, module, "ImplicitTorus");
-    owlGeomTypeSetBoundsProg(implicitTorusGeomType, module, "ImplicitTorus");
+    owlGeomTypeSetIntersectProg(implicitGeomType, 0, module, "Implicit");
+    owlGeomTypeSetClosestHit(implicitGeomType, 0, module, "Implicit");
+    owlGeomTypeSetBoundsProg(implicitGeomType, module, "Implicit");
 
-    OWLGeom torusGeom = owlGeomCreate(context, implicitTorusGeomType);
-    owlGeomSet1f(torusGeom, "majorRadius", 1.0f);
-    owlGeomSet1f(torusGeom, "minorRadius", 0.5f);
-    owlGeomSetPrimCount(torusGeom, 1);
+    // -------- DEFINE IMPLICIT SURFACE --------
+    OWLGeom implicitGeom = owlGeomCreate(context, implicitGeomType);
+    owlGeomSet1i(implicitGeom, "type", IMPLICIT_GYROID);
+    owlGeomSet1f(implicitGeom, "param0", 0.75f);
+    owlGeomSet1f(implicitGeom, "param1", 0.5f);
+    owlGeomSetPrimCount(implicitGeom, 1);
 
 
     // -------- LOAD SCENE --------
@@ -222,13 +225,13 @@ int main(int ac, char **av){
     owlBuildPrograms(context);
     owlBuildPipeline(context);
 
-    OWLGroup torusGroup = owlUserGeomGroupCreate(context, 1, &torusGeom);
-    owlGroupBuildAccel(torusGroup);
+    OWLGroup implicitGroup = owlUserGeomGroupCreate(context, 1, &implicitGeom);
+    owlGroupBuildAccel(implicitGroup);
 
-    OWLGroup world = owlInstanceGroupCreate(context, 1, &torusGroup);
+    OWLGroup world = owlInstanceGroupCreate(context, 1, &implicitGroup);
     owlGroupBuildAccel(world);
 
-    owlGeomSetGroup(torusGeom, "world", world);
+    owlGeomSetGroup(implicitGeom, "world", world);
 
     // -------- RENDER FOR EACH LIGHT SOURCE + SAVE PNG --------
     for (int i = 0; i < (int)scene.ligths.size(); ++i)

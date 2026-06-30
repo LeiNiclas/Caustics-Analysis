@@ -63,15 +63,18 @@ struct MissProgData
 };
 
 
-struct TorusGeomData
+enum ImplicitType
 {
-    float minorRadius;
-    float majorRadius;
-    OptixTraversableHandle world;
+    IMPLICIT_TORUS,
+    IMPLICIT_PARABOLA,
+    IMPLICIT_GYROID
 };
 
 
-struct ParabolaGeomData
+struct ImplicitGeomData
 {
+    ImplicitType type;
+    float param0;
+    float param1;
     OptixTraversableHandle world;
 };

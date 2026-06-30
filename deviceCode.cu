@@ -1,4 +1,5 @@
 #include "deviceCode.h"
+#include "deviceCode.cuh"
 #include <optix_device.h>
 
 // Taken from https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html?highlight=float2#atomic-functions
@@ -132,8 +133,8 @@ OPTIX_RAYGEN_PROGRAM(rayGen)() // Name in parantheses must match name given in m
 
 	if (self.isPunctual)
 	{
-		float u = screen.u;
-		float v = screen.v;
+		//float u = screen.u;
+		//float v = screen.v;
 
 		// Golden ratio offset per row -> breaks phi-coherence
 		float phi = 2.0f * M_PI * fmodf(screen.u + pixelID.y * 0.618033988749f, 1.0f);
@@ -231,68 +232,26 @@ OPTIX_MISS_PROGRAM(miss)()
 }
 
 
-__device__ vec3f torusNormal(vec3f position, float R){
-    vec3f normal;
-    float sqroot = owl::sqrt(position.x * position.x + position.y * position.y);
-    float factor = 2.0f * (1.0f - R / sqroot);
-    normal.x = position.x * factor;
-    normal.y = position.y * factor;
-    normal.z = position.z * 2.0f;
-    return normalize(normal);
-}
-
-
-__device__ float torus(vec3f position, float R, float r)
-{
-	float term = (owl::sqrt(position.x * position.x + position.y * position.y) - R);
-	term *= term;
-	term += position.z * position.z;
-	term -= r * r;
-
-	return term;
-}
-
-
-__device__ float parabola(vec3f position)
-{
-	float term	= position.x * position.x
-				+ position.y * position.y
-				- position.z;
-	
-	return term;
-}
-
-
-__device__ vec3f parabolaNormal(vec3f position)
-{
-	vec3f normal = vec3f(2.0f * position.x, 2.0f * position.y, -1);
-	return normalize(normal);
-}
-
-
 __device__ vec3f getPositionAlongRay(vec3f origin, vec3f dir, float t)
 {
 	return origin + t * dir;
 }
 
 
-OPTIX_INTERSECT_PROGRAM(ImplicitTorus)()
+OPTIX_INTERSECT_PROGRAM(Implicit)()
 {
-	const TorusGeomData& self = owl::getProgramData<TorusGeomData>();
+	const ImplicitGeomData& self = owl::getProgramData<ImplicitGeomData>();
 
 	vec3f rayOrigin = optixGetObjectRayOrigin();
 	vec3f rayDirection = optixGetObjectRayDirection();
 	
-	float minorRadius = self.minorRadius;
-	float majorRadius = self.majorRadius;
-
 	const float eps = 1e-6;
 	const float tMax = 50;
 	float t1 = 0.0;
 	float t2;
 	float tIncrementStep = 0.25;
 	
-	float val1 = parabola(getPositionAlongRay(rayOrigin, rayDirection, t1)); //torus(getPositionAlongRay(rayOrigin, rayDirection, t1), majorRadius, minorRadius);
+	float val1 = evalImplicit(self.type, getPositionAlongRay(rayOrigin, rayDirection, t1), self.param0, self.param1); //torus(getPositionAlongRay(rayOrigin, rayDirection, t1), majorRadius, minorRadius);
 	float val2;
 
 	int maxSteps = 100;
@@ -308,7 +267,7 @@ OPTIX_INTERSECT_PROGRAM(ImplicitTorus)()
 		if (t2 > tMax)
 			t2 = tMax;
 		
-		val2 = parabola(getPositionAlongRay(rayOrigin, rayDirection, t2)); //torus(getPositionAlongRay(rayOrigin, rayDirection, t2), majorRadius, minorRadius);
+		val2 = evalImplicit(self.type, getPositionAlongRay(rayOrigin, rayDirection, t2), self.param0, self.param1); //torus(getPositionAlongRay(rayOrigin, rayDirection, t2), majorRadius, minorRadius);
 
 		if (signbit(val1) != signbit(val2))
 		{
@@ -351,19 +310,19 @@ OPTIX_INTERSECT_PROGRAM(ImplicitTorus)()
 	optixReportIntersection(tHit, 0);
 }
 
-// Closest Hit Program for the implicit torus
-OPTIX_CLOSEST_HIT_PROGRAM(ImplicitTorus)()
+
+OPTIX_CLOSEST_HIT_PROGRAM(Implicit)()
 {
     PRD& prd = owl::getPRD<PRD>();
 
-    const TorusGeomData& self = owl::getProgramData<TorusGeomData>();
+    const ImplicitGeomData& self = owl::getProgramData<ImplicitGeomData>();
 
     const vec3f rayOrigin = optixGetWorldRayOrigin();
     const vec3f rayDir    = optixGetWorldRayDirection();
     const float tHit      = optixGetRayTmax();
     vec3f hitPoint = rayOrigin + tHit * rayDir;
 
-    vec3f normal = parabolaNormal(hitPoint); //torusNormal(hitPoint, self.majorRadius);
+    vec3f normal = evalImplicitNormal(self.type, hitPoint, self.param0, self.param1);
     if (dot(normal, rayDir) > 0.f) normal = -normal;
 
     vec3f directColor = (0.2f + 0.8f * fabsf(dot(rayDir, normal))) * vec3f(0.2f, 0.6f, 1.0f);
@@ -401,7 +360,7 @@ OPTIX_CLOSEST_HIT_PROGRAM(ImplicitTorus)()
 }
 
 
-OPTIX_BOUNDS_PROGRAM(ImplicitTorus)(const void* geomData, box3f& bounds, int primID)
+OPTIX_BOUNDS_PROGRAM(Implicit)(const void* geomData, box3f& bounds, int primID)
 {
 	bounds.lower = vec3f(-10.0f, -10.0f, -10.0f);
 	bounds.upper = vec3f(10.0f, 10.0f, 10.0f);
