@@ -137,6 +137,18 @@ __device__ inline vec3f tanglecubeNormal(vec3f position)
 }
 
 
+__device__ inline float hyperbolicParaboloid(vec3f position)
+{
+    return position.x*position.x - position.y*position.y - position.z;
+}
+
+
+__device__ inline vec3f hyperbolicParaboloidNormal(vec3f position)
+{
+    return normalize(vec3f(2*position.x, -2*position.y, -1));
+}
+
+
 __device__ inline float evalImplicit(ImplicitType type, vec3f position, float p0, float p1)
 {
     switch (type)
@@ -147,6 +159,7 @@ __device__ inline float evalImplicit(ImplicitType type, vec3f position, float p0
         case IMPLICIT_PERTUBED_PARABOLOID: return pertubedParaboloid(position, p0, p1);
         case IMPLICIT_CUSHION_SURFACE: return cushionSurface(position);
         case IMPLICIT_TANGLECUBE: return tanglecube(position);
+        case IMPLICIT_HYPERBOLIC_PARABOLOID: return hyperbolicParaboloid(position);
         default: return 1.0f;
     }
 }
@@ -162,6 +175,7 @@ __device__ inline vec3f evalImplicitNormal(ImplicitType type, vec3f position, fl
         case IMPLICIT_PERTUBED_PARABOLOID: return pertubedParaboloidNormal(position, p0, p1);
         case IMPLICIT_CUSHION_SURFACE: return cushionSurfaceNormal(position);
         case IMPLICIT_TANGLECUBE: return tanglecubeNormal(position);
+        case IMPLICIT_HYPERBOLIC_PARABOLOID: return hyperbolicParaboloidNormal(position);
         default: return vec3f(1.0f);
     }
 }
