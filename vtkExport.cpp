@@ -4,6 +4,9 @@
 #include <cstdint>
 #include <vector>
 
+#define VERTICES_PER_CELL 8
+#define CELL_TYPE 12
+
 void exportVTI(
     const std::string& filename,
     const double* grid,
@@ -39,9 +42,11 @@ void exportVTI(
     }
 
     // Connectivity
-    uint32_t connBytes = totalCells * 8 * sizeof(int32_t);
+    // Explaination of data structures:
+    // https://resinsight.org/reference-manual/surfaces/vtksurface/index.html
+    uint32_t connBytes = totalCells * VERTICES_PER_CELL * sizeof(int32_t);
     std::vector<int32_t> conn;
-    conn.reserve(totalCells * 8);
+    conn.reserve(totalCells * VERTICES_PER_CELL);
     auto idx = [&](int i, int j, int k) {
         return i + j*(nx+1) + k*(nx+1)*(ny+1);
     };
@@ -63,12 +68,13 @@ void exportVTI(
     uint32_t offsetBytes = totalCells * sizeof(int32_t);
     std::vector<int32_t> offsets;
     offsets.reserve(totalCells);
+
     for (int c = 1; c <= totalCells; c++)
-        offsets.push_back(c * 8);
+        offsets.push_back(c * VERTICES_PER_CELL); //sparse graph representation. 8 edges per cell
 
     // Celltypes
     uint32_t typeBytes = totalCells * sizeof(uint8_t);
-    std::vector<uint8_t> types(totalCells, 12);
+    std::vector<uint8_t> types(totalCells, CELL_TYPE); // https://github.com/Kitware/VTK/blob/master/Common/DataModel/vtkCellType.h
 
     // Data
     uint32_t fieldBytes = totalCells * sizeof(float);

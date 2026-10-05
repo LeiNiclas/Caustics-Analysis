@@ -17,7 +17,7 @@ SceneConfig loadScene(const std::string& path)
         float fov = light.value("fovDeg", 90.0f);
         float coneAngle = light.value("coneAngle", 90.0f) * M_PI / 180.0f;
 
-        scene.ligths.push_back(
+        scene.lights.push_back(
             {
                 { light["position"]["x"], light["position"]["y"], light["position"]["z"] },
                 light["resolutionX"], light["resolutionY"],
@@ -26,6 +26,15 @@ SceneConfig loadScene(const std::string& path)
                 coneAngle
             }
         );
+    }
+
+    if (j.contains("sphereLights"))
+    {
+        auto& sl = j["sphereLights"];
+        scene.sphereLights.enabled = sl.value("enabled", false);
+        scene.sphereLights.count = sl.value("count", 16);
+        scene.sphereLights.marginFactor = sl.value("marginFactor", 2.0f);
+        scene.sphereLights.coneAngleMarginDeg = sl.value("coneAngleMarginDeg", 5.0f);
     }
 
     for (auto& mesh : j["meshes"])

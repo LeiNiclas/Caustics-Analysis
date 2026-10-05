@@ -31,21 +31,48 @@ __device__ double atomicAdd(double* address, double val)
 // grid:		target buffer (primaryGrid OR bounceGrid)
 // gridOrigin, cellSize, dims: grid params
 __device__ void traverseGrid(
-	const vec3f& origin,
-	const vec3f& direction,
-	float tMax,
-	double* grid,
-	const vec3f& gridOrigin,
-	const vec3f& cellSize,
-	const vec3i& dims
-)
+    const vec3f& origin, const vec3f& direction, float tMax,
+    double* grid, const vec3f& gridOrigin, const vec3f& cellSize, const vec3i& dims)
 {
-	vec3f posInGrid = (origin - gridOrigin) / cellSize;
+    const vec3f gridMin = gridOrigin;
+    const vec3f gridMax = gridOrigin + vec3f((float)dims.x, (float)dims.y, (float)dims.z) * cellSize;
 
-    int cellX = (int)floorf(posInGrid.x);
-    int cellY = (int)floorf(posInGrid.y);
-    int cellZ = (int)floorf(posInGrid.z);
-	
+    // Slab-Test: Entry point where the ray initially hits the grid
+    float tEnter = 0.0f, tExit = tMax;
+
+    if (fabsf(direction.x) < 1e-8f) { if (origin.x < gridMin.x || origin.x > gridMax.x) return; }
+    else {
+        float t0 = (gridMin.x - origin.x) / direction.x;
+        float t1 = (gridMax.x - origin.x) / direction.x;
+        if (t0 > t1) { float tmp = t0; t0 = t1; t1 = tmp; }
+        tEnter = fmaxf(tEnter, t0); tExit = fminf(tExit, t1);
+    }
+    if (fabsf(direction.y) < 1e-8f) { if (origin.y < gridMin.y || origin.y > gridMax.y) return; }
+    else {
+        float t0 = (gridMin.y - origin.y) / direction.y;
+        float t1 = (gridMax.y - origin.y) / direction.y;
+        if (t0 > t1) { float tmp = t0; t0 = t1; t1 = tmp; }
+        tEnter = fmaxf(tEnter, t0); tExit = fminf(tExit, t1);
+    }
+    if (fabsf(direction.z) < 1e-8f) { if (origin.z < gridMin.z || origin.z > gridMax.z) return; }
+    else {
+        float t0 = (gridMin.z - origin.z) / direction.z;
+        float t1 = (gridMax.z - origin.z) / direction.z;
+        if (t0 > t1) { float tmp = t0; t0 = t1; t1 = tmp; }
+        tEnter = fmaxf(tEnter, t0); tExit = fminf(tExit, t1);
+    }
+
+    if (tEnter >= tExit || tExit <= 0.0f) return;   // Ray misses the grid
+    tEnter = fmaxf(tEnter, 0.0f);                    // if origin already lies inside of the grid
+
+    // start DDA at the actual entrypoint
+    vec3f entryPoint = origin + tEnter * direction;
+    vec3f posInGrid = (entryPoint - gridOrigin) / cellSize;
+
+    int cellX = min(max((int)floorf(posInGrid.x), 0), dims.x - 1);
+    int cellY = min(max((int)floorf(posInGrid.y), 0), dims.y - 1);
+    int cellZ = min(max((int)floorf(posInGrid.z), 0), dims.z - 1);
+
     int stepX = direction.x >= 0.f ? 1 : -1;
     int stepY = direction.y >= 0.f ? 1 : -1;
     int stepZ = direction.z >= 0.f ? 1 : -1;
@@ -54,69 +81,54 @@ __device__ void traverseGrid(
     double tDeltaY = cellSize.y / fmaxf(fabsf(direction.y), 1e-8f);
     double tDeltaZ = cellSize.z / fmaxf(fabsf(direction.z), 1e-8f);
 
-    double nextX = (stepX > 0)
-        ? (ceilf(posInGrid.x)  - posInGrid.x) * tDeltaX
-        : (posInGrid.x - floorf(posInGrid.x)) *	tDeltaX;
+    double nextX = (gridOrigin.x + (cellX + (stepX > 0 ? 1 : 0)) * cellSize.x - origin.x) / direction.x;
+    double nextY = (gridOrigin.y + (cellY + (stepY > 0 ? 1 : 0)) * cellSize.y - origin.y) / direction.y;
+    double nextZ = (gridOrigin.z + (cellZ + (stepZ > 0 ? 1 : 0)) * cellSize.z - origin.z) / direction.z;
 
-    double nextY = (stepY > 0)
-        ? (ceilf(posInGrid.y)  - posInGrid.y) * tDeltaY
-        : (posInGrid.y - floorf(posInGrid.y)) * tDeltaY;
+    double t = tEnter;
+    const double tStop = fmin((double)tExit, (double)tMax);
 
-    double nextZ = (stepZ > 0)
-        ? (ceilf(posInGrid.z)  - posInGrid.z) * tDeltaZ
-        : (posInGrid.z - floorf(posInGrid.z)) * tDeltaZ;
-
-    // Edgecase: Ray starts on cell boundary
-    if (nextX == 0.0f) nextX = tDeltaX;
-    if (nextY == 0.0f) nextY = tDeltaY;
-    if (nextZ == 0.0f) nextZ = tDeltaZ;
-
-    double t = 0.0;
-	double tPrevious = 0.0;
-
-    while (t < tMax)
+    while (t < tStop)
     {
-        if (cellX >= 0 && cellX < dims.x &&
-            cellY >= 0 && cellY < dims.y &&
-            cellZ >= 0 && cellZ < dims.z)
-        {
-            int idx = cellX + dims.x * cellY + dims.x * dims.y * cellZ;
-			double length;
+        double tNext = fmin(fmin(nextX, nextY), nextZ);
+        tNext = fmin(tNext, tStop);
 
-			if (tPrevious == 0.0)
-				length = t;
-			else
-				length = t - tPrevious;
-			
-			tPrevious = t;
+        int idx = cellX + dims.x * cellY + dims.x * dims.y * cellZ;
+        atomicAdd(&grid[idx], tNext - t);   // Length of the current segment
 
-            atomicAdd(&grid[idx], length); 
-        }
-        else if (t > 0.0f)
-        {
-            // Ray left the grid
+        t = tNext;
+        if (nextX <= nextY && nextX <= nextZ) { nextX += tDeltaX; cellX += stepX; }
+        else if (nextY <= nextZ)              { nextY += tDeltaY; cellY += stepY; }
+        else                                   { nextZ += tDeltaZ; cellZ += stepZ; }
+
+        if (cellX < 0 || cellX >= dims.x || cellY < 0 || cellY >= dims.y || cellZ < 0 || cellZ >= dims.z)
             break;
-        }
-
-        if (nextX < nextY && nextX < nextZ)
-		{
-            t = nextX;
-			nextX += tDeltaX;
-			cellX += stepX;
-        }
-		else if (nextY < nextZ)
-		{
-            t = nextY;
-			nextY += tDeltaY;
-			cellY += stepY;
-        }
-		else
-		{
-            t = nextZ;
-			nextZ += tDeltaZ;
-			cellZ += stepZ;
-        }
     }
+}
+
+__device__ inline float radicalInverse(uint32_t bits, uint32_t base)
+{
+	float f = 1.0f;
+	float r = 0.0f;
+
+	while (bits > 0)
+	{
+		f /= (float)base;
+		r += f * (bits % base);
+		bits /= base;
+	}
+
+	return r;
+}
+
+
+__device__ inline void buildONB(const vec3f& n, vec3f& b1, vec3f& b2)
+{
+	float sign = n.z >= 0.0f ? 1.0f : -1.0f;
+	float a = -1.0f / (sign + n.z);
+	float b = n.x * n.y * a;
+	b1 = vec3f(1.0f + sign * n.x * n.x * a, sign * b, -sign * n.x);
+	b2 = vec3f(b, sign + n.y * n.y * a, -n.y);
 }
 
 
@@ -133,33 +145,23 @@ OPTIX_RAYGEN_PROGRAM(rayGen)() // Name in parantheses must match name given in m
 
 	if (self.isPunctual)
 	{
-		//float u = screen.u;
-		//float v = screen.v;
+		const uint32_t pixelIndex = pixelID.x + self.fbSize.x * pixelID.y;
 
-		// Golden ratio offset per row -> breaks phi-coherence
-		float phi = 2.0f * M_PI * fmodf(screen.u + pixelID.y * 0.618033988749f, 1.0f);
-		float cosMax   = cosf(self.camera.coneAngle);
-		float cosTheta = 1.0f - screen.v * (1.0f - cosMax);
-		float sinTheta = sqrtf(fmaxf(0.0f, 1.0f - cosTheta * cosTheta));
+		float u1 = radicalInverse(pixelIndex + 1u, 2u);
+		float u2 = radicalInverse(pixelIndex + 1u, 3u);
 
-		vec3f localDir;
-		localDir.x = sinTheta * cosf(phi);
-		localDir.y = sinTheta * sinf(phi);
-		localDir.z = cosTheta;
-
-		// World coordinates
 		vec3f fwd = normalize(self.camera.dir_00);
-		vec3f hint = (fabs(dot(fwd, self.camera.dir_dv)) < 0.99f) // Fallback (fwd parallel to dir_dv)
-				   ? self.camera.dir_dv
-				   : vec3f(0.0f, 0.0f, 1.0f);
+		vec3f right, up;
+		buildONB(fwd, right, up);
 
-		vec3f right = normalize(cross(fwd, self.camera.dir_dv));
-		vec3f up = cross(right, fwd);
+		float cosMax = cosf(self.camera.coneAngle);
+		float cosTheta = 1.0f - u1 * (1.0f - cosMax);
+		float sinTheta = sqrtf(fmaxf(0.0f, 1.0f - cosTheta * cosTheta));
+		float phi = 2.0f * (float)M_PI * u2;
 
-		vec3f worldDir = localDir.x * right
-					   + localDir.y * up
-					   + localDir.z * fwd;
-		
+		vec3f localDir(sinTheta * cosf(phi), sinTheta * sinf(phi), cosTheta);
+		vec3f worldDir = localDir.x * right + localDir.y * up + localDir.z * fwd;
+
 		ray.origin = self.camera.pos;
 		ray.direction = normalize(worldDir);
 	}

@@ -27,11 +27,20 @@ struct GridConfig
     owl::vec3i cellCount;
 };
 
+struct SphereLightConfig
+{
+    bool enabled;
+    int count;
+    float marginFactor;
+    float coneAngleMarginDeg;
+};
+
 struct SceneConfig
 {
-    std::vector<LightSource> ligths;
+    std::vector<LightSource> lights;
     std::vector<MeshInstance> meshes;
     GridConfig grid;
+    SphereLightConfig sphereLights;
 };
 
 SceneConfig loadScene(const std::string& path);

@@ -19,6 +19,13 @@
             "resolutionY": 100
         }
     ],
+    "sphereLights":
+    {
+        "enabled": true,
+        "count": 1,
+        "marginFactor": 2.0,
+        "coneAngleMarginDeg": 5.0
+    },
     "meshes": [
         {
             "objPath": "TorusV3.obj",
