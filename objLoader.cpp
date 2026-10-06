@@ -81,10 +81,9 @@ void applyTransform(TriangleMesh& mesh, const owl::vec3f& pos, const owl::vec3f&
         float ry2 = r10 * x + r11 * y + r12 * z;
         float rz2 = r20 * x + r21 * y + r22 * z;
 
-        // Translate
-        // Unity -> OptiX: Flip Z-Axis (Left to Righthanded system)
+        // Translate. OBJ coordinates from ParaView are already in VTK world space.
         v.x = rx2 + pos.x;
         v.y = ry2 + pos.y;
-        v.z = rz2 - pos.z;
+        v.z = rz2 + pos.z;
     }
 }

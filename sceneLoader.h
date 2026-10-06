@@ -15,6 +15,7 @@ struct LightSource
 struct MeshInstance
 {
     std::string objPath;
+    bool isCausticsMesh;
     owl::vec3f position;
     owl::vec3f rotation;
     owl::vec3f scale;

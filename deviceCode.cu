@@ -63,7 +63,7 @@ __device__ void traverseGrid(
     }
 
     if (tEnter >= tExit || tExit <= 0.0f) return;   // Ray misses the grid
-    tEnter = fmaxf(tEnter, 0.0f);                    // if origin already lies inside of the grid
+    tEnter = fmaxf(tEnter, 0.0f);                   // if origin already lies inside of the grid
 
     // start DDA at the actual entrypoint
     vec3f entryPoint = origin + tEnter * direction;
@@ -175,6 +175,10 @@ OPTIX_RAYGEN_PROGRAM(rayGen)() // Name in parantheses must match name given in m
 	PRD prd;
 	prd.depth = 0;
 	prd.color = vec3f(0.0f);
+	prd.reflectionPoint = vec3f(0.0f);
+	prd.reflectionPoints = self.reflectionPoints;
+	prd.reflectionCounter = self.reflectionCounter;
+	prd.reflectionCapacity = self.reflectionCapacity;
 	prd.primaryGrid = self.primaryGrid;
 	prd.bounceGrid = self.bounceGrid;
 	prd.gridOrigin = self.gridOrigin;
@@ -291,7 +295,7 @@ OPTIX_INTERSECT_PROGRAM(Implicit)()
 	for (int i = 0; i < maxBisectionSteps; i++)
 	{
 		tMid = (t1 + t2) * 0.5;
-		float valMid = parabola(getPositionAlongRay(rayOrigin, rayDirection, tMid)); //torus(getPositionAlongRay(rayOrigin, rayDirection, tMid), majorRadius, minorRadius);
+		float valMid = evalImplicit(self.type, getPositionAlongRay(rayOrigin, rayDirection, tMid), self.param0, self.param1); //torus(getPositionAlongRay(rayOrigin, rayDirection, tMid), majorRadius, minorRadius);
 
 		if (abs(valMid) < eps)
 			break;
@@ -346,6 +350,10 @@ OPTIX_CLOSEST_HIT_PROGRAM(Implicit)()
         PRD secPRD;
         secPRD.depth        = prd.depth + 1;
         secPRD.color        = vec3f(0.f);
+		secPRD.reflectionPoint = hitPoint;
+		secPRD.reflectionPoints = prd.reflectionPoints;
+		secPRD.reflectionCounter = prd.reflectionCounter;
+		secPRD.reflectionCapacity = prd.reflectionCapacity;
         secPRD.primaryGrid  = prd.primaryGrid;
         secPRD.bounceGrid   = prd.bounceGrid;
         secPRD.gridOrigin   = prd.gridOrigin;
@@ -359,6 +367,25 @@ OPTIX_CLOSEST_HIT_PROGRAM(Implicit)()
     {
         prd.color = directColor;
     }
+}
+
+
+// Closest Hit Program for the triangle mesh
+OPTIX_CLOSEST_HIT_PROGRAM(TriangleMesh)()  // !!! Add to main
+{
+	PRD &prd = owl::getPRD<PRD>();
+	if (prd.depth != 1 || !prd.reflectionPoints || !prd.reflectionCounter)
+		return;
+
+	const int slot = atomicAdd(prd.reflectionCounter, 1);
+	if (slot >= prd.reflectionCapacity)
+		return;
+
+	const int base = 3 * slot;
+	prd.reflectionPoints[base + 0] = prd.reflectionPoint.x;
+	prd.reflectionPoints[base + 1] = prd.reflectionPoint.y;
+	prd.reflectionPoints[base + 2] = prd.reflectionPoint.z;
+
 }
 
 

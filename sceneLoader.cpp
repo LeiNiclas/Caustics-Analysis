@@ -42,6 +42,7 @@ SceneConfig loadScene(const std::string& path)
         scene.meshes.push_back(
             {
                 mesh["objPath"],
+                mesh.value("isCausticsMesh", false),
                 { mesh["position"]["x"], mesh["position"]["y"], mesh["position"]["z"] },
                 { mesh["rotation"]["x"], mesh["rotation"]["y"], mesh["rotation"]["z"] },
                 { mesh["scale"]["x"],    mesh["scale"]["y"],    mesh["scale"]["z"] }

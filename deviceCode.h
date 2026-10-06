@@ -13,6 +13,10 @@ struct PRD
 {
     vec3f color;
     int depth;
+    vec3f reflectionPoint;
+    float* reflectionPoints;
+    int* reflectionCounter;
+    int reflectionCapacity;
 
     // Grid params
     double* primaryGrid;
@@ -43,15 +47,16 @@ struct RayGenData
     vec3f gridOrigin;
     vec3f gridCellSize;
     vec3i gridDims;
+    int* reflectionCounter;
+    float* reflectionPoints;
+    int reflectionCapacity;
 };
 
 
 struct TrianglesGeomData
 {
-    vec3f color;    // base color
     vec3f *vertex;  // vert buffer
     vec3i *index;   // vert indices buffer
-    uint32_t *counter; // pointer to global hit counter
     OptixTraversableHandle world;
 };
 

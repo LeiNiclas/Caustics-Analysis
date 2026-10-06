@@ -2,6 +2,8 @@
 #include <fstream>
 #include <stdexcept>
 #include <cstdint>
+#include <iomanip>
+#include <limits>
 #include <vector>
 
 #define VERTICES_PER_CELL 8
@@ -133,4 +135,54 @@ void exportVTI(
 
     f << "\n  </AppendedData>\n";
     f << "</VTKFile>\n";
+}
+
+void exportPointsVTP(
+    const std::string& filename,
+    const float* xyzPoints,
+    std::size_t pointCount
+)
+{
+    if (pointCount > 0 && xyzPoints == nullptr)
+        throw std::invalid_argument("Point data pointer is null.");
+    if (pointCount > static_cast<std::size_t>(std::numeric_limits<int32_t>::max()))
+        throw std::invalid_argument("Point count exceeds VTK Int32 connectivity capacity.");
+
+    std::ofstream f(filename);
+    if (!f.is_open())
+        throw std::runtime_error("Could not open VTK file: " + filename);
+
+    f << std::setprecision(std::numeric_limits<float>::max_digits10);
+    f << "<?xml version=\"1.0\"?>\n";
+    f << "<VTKFile type=\"PolyData\" version=\"0.1\" byte_order=\"LittleEndian\">\n";
+    f << "  <PolyData>\n";
+    f << "    <Piece NumberOfPoints=\"" << pointCount
+        << "\" NumberOfVerts=\"" << pointCount
+        << "\" NumberOfLines=\"0\" NumberOfStrips=\"0\" NumberOfPolys=\"0\">\n";
+
+    f << "      <Points>\n";
+    f << "        <DataArray type=\"Float32\" NumberOfComponents=\"3\" format=\"ascii\">\n";
+    for (std::size_t i = 0; i < pointCount; ++i)
+        f << "          " << xyzPoints[3 * i] << ' '
+            << xyzPoints[3 * i + 1] << ' ' << xyzPoints[3 * i + 2] << '\n';
+    f << "        </DataArray>\n";
+    f << "      </Points>\n";
+
+    f << "      <Verts>\n";
+    f << "        <DataArray type=\"Int32\" Name=\"connectivity\" format=\"ascii\">\n";
+    for (std::size_t i = 0; i < pointCount; ++i)
+        f << "          " << i << '\n';
+    f << "        </DataArray>\n";
+    f << "        <DataArray type=\"Int32\" Name=\"offsets\" format=\"ascii\">\n";
+    for (std::size_t i = 1; i <= pointCount; ++i)
+        f << "          " << i << '\n';
+    f << "        </DataArray>\n";
+    f << "      </Verts>\n";
+
+    f << "    </Piece>\n";
+    f << "  </PolyData>\n";
+    f << "</VTKFile>\n";
+
+    if (!f)
+        throw std::runtime_error("Failed while writing VTK file: " + filename);
 }

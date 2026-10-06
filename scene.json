@@ -28,14 +28,15 @@
     },
     "meshes": [
         {
-            "objPath": "TorusV3.obj",
+            "objPath": "caustic_extracted_octant_8.obj",
+            "isCausticsMesh": false,
             "position": {
                 "x": 0.0,
                 "y": 0.0,
                 "z": 0.0
             },
             "rotation": {
-                "x": 90.0,
+                "x": 0.0,
                 "y": 0.0,
                 "z": 0.0
             },
