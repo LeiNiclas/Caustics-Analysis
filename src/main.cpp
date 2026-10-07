@@ -11,7 +11,7 @@
 
 extern "C" char deviceCode_ptx[];
 
-const char *sceneFileName = "scene.json";
+const char *defaultSceneFileName = "scene.json";
 
 // Light dimensions 
 const int W = pow(2, 11);
@@ -84,8 +84,8 @@ std::vector<LightSource> generateSphereLights(int count, vec3f gridCenter, float
     return lights;
 }
 
-SceneVars createScene(){
-    SceneConfig scene = loadScene(sceneFileName);
+SceneVars createScene(const std::string& sceneFilePath){
+    SceneConfig scene = loadScene(sceneFilePath);
 
     std::vector<LightSource> activeLights;
 
@@ -120,6 +120,8 @@ SceneVars createScene(){
 
 
 int main(int ac, char **av){
+    std::string sceneFilePath = (ac > 1) ? av[1] : defaultSceneFileName;
+
     // Initialize CUDA and Optix
     OWLContext context = owlContextCreate(nullptr, 1);
 
@@ -171,7 +173,7 @@ int main(int ac, char **av){
 
 
     // Load scene from config
-    SceneVars scene = createScene();
+    SceneVars scene = createScene(sceneFilePath);
 
     const MeshInstance* causticsMeshConfig = nullptr;
     for (const MeshInstance& mesh : scene.config.meshes)
@@ -363,12 +365,20 @@ int main(int ac, char **av){
 
     exportVTI("caustics_primary.vtu", hostPrimary.data(), gridDims, gridOrigin, gridCellSize, "primary");
     exportVTI("caustics_bounce.vtu", hostBounce.data(), gridDims, gridOrigin, gridCellSize, "bounce");
-    exportPointsVTP("caustic_reflection_points.vtp", hostReflections.data(), exportedReflectionCount);
     
-    std::cout << "Reflected rays hitting the caustics mesh: "
-              << exportedReflectionCount << std::endl;
-    if (hostReflectionCount > static_cast<int>(reflectionCapacity))
-        std::cerr << "Warning: reflection-point capture reached its capacity; some points were not exported.\n";
+    if (causticsMeshConfig)
+    {
+        exportPointsVTP("caustic_reflection_points.vtp", hostReflections.data(), exportedReflectionCount);
+
+        std::cout << "Reflected rays hitting the caustics mesh: "
+                  << exportedReflectionCount << std::endl;
+        if (hostReflectionCount > static_cast<int>(reflectionCapacity))
+            std::cerr << "Warning: reflection-point capture reached its capacity; some points were not exported.\n";
+    }
+    else
+    {
+        std::cout << "No caustics mesh marked as isCausticsMesh; reflection points were not exported.\n";
+    }
 
     // -------- CLEAN UP --------
     owlBufferRelease(frameBuffer);

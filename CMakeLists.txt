@@ -5,8 +5,15 @@ add_subdirectory(owl EXCLUDE_FROM_ALL)
 
 set(CMAKE_CUDA_ARCHITECTURES "native")
 
-add_executable(app main.cpp objLoader.cpp sceneLoader.cpp vtkExport.cpp)
-include_directories(${CMAKE_SOURCE_DIR})
+include_directories(${CMAKE_SOURCE_DIR}/src)
+
+add_executable(app
+    src/main.cpp
+    src/objLoader.cpp
+    src/sceneLoader.cpp
+    src/vtkExport.cpp
+)
+
 target_link_libraries(app PRIVATE owl::owl)
 
 # ---- Copy OWL DLL ----
@@ -15,14 +22,6 @@ add_custom_command(TARGET app POST_BUILD
         $<TARGET_FILE:owl>
         $<TARGET_FILE_DIR:app>/owl.dll
     COMMENT "Copying OWL DLL to app directory"
-)
-
-# ---- Copy scene.json ----
-add_custom_command(TARGET app POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${CMAKE_SOURCE_DIR}/scene.json
-        $<TARGET_FILE_DIR:app>/scene.json
-    COMMENT "Copying scene.json to output directory"    
 )
 
 # ---- Copy all .obj files ----
@@ -38,7 +37,7 @@ add_custom_command(TARGET app POST_BUILD
 embed_ptx(
     OUTPUT_TARGET simple-ptx
     PTX_LINK_LIBRARIES owl::owl
-    SOURCES ${CMAKE_SOURCE_DIR}/deviceCode.cu
+    SOURCES ${CMAKE_SOURCE_DIR}/src/deviceCode.cu
 )
 
 target_link_libraries(app PRIVATE simple-ptx)

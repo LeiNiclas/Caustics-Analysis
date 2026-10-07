@@ -1,0 +1,29 @@
+{
+  "type": "catmull_rom",
+  "tension": 0.5,
+  "resolution": 30,
+  "yStart": -0.5,
+  "yEnd": 0.5,
+  "controlPoints": [
+    {
+      "index": 0,
+      "x": -0.5,
+      "z": 0
+    },
+    {
+      "index": 1,
+      "x": -0.166667,
+      "z": -0.5
+    },
+    {
+      "index": 2,
+      "x": 0.166667,
+      "z": -0.5
+    },
+    {
+      "index": 3,
+      "x": 0.5,
+      "z": 0
+    }
+  ]
+}

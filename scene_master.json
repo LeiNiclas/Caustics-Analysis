@@ -1,4 +1,6 @@
 {
+    "caustic_threshold_factor": 0.3,
+    "compute_reflections": false,
     "lights": [
         {
             "type": "punctual",
@@ -19,17 +21,16 @@
             "resolutionY": 100
         }
     ],
-    "sphereLights":
-    {
-        "enabled": true,
-        "count": 1,
+    "sphereLights": {
+        "enabled": false,
+        "count": 32,
         "marginFactor": 2.0,
         "coneAngleMarginDeg": 5.0
     },
     "meshes": [
         {
-            "objPath": "caustic_extracted_octant_8.obj",
             "isCausticsMesh": false,
+            "objPath": "caustics_mesh_combined.obj",
             "position": {
                 "x": 0.0,
                 "y": 0.0,
@@ -47,6 +48,7 @@
             }
         }
     ],
+    "use_octant_splitting": true,
     "grid": {
         "origin": {
             "x": -3.0,
@@ -59,9 +61,9 @@
             "z": 6
         },
         "resolution": {
-            "x": 100,
-            "y": 100,
-            "z": 100
+            "x": 200,
+            "y": 200,
+            "z": 200
         }
     }
 }

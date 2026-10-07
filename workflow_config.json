@@ -1,0 +1,16 @@
+{
+  "paths": {
+    "working_directory": "build/Debug",
+    "curve_json": "curve.json",
+    "master_scene_json": "scene_master.json",
+    "scene_json": "",
+    "renderer_exe": "build/Debug/app.exe",
+    "obj_output": "build/Debug/Surface.obj",
+    "combined_obj": "build/Debug/caustics_mesh_combined.obj",
+    "pvpython": "your/path/to/pvpython.exe",
+    "plugin": "your/path/to/plugin.dll",
+    "primary_vti": "build/Debug/caustics_primary.vtu",
+    "bounce_vti": "build/Debug/caustics_bounce.vtu",
+    "reflection_vtp": "build/Debug/caustic_reflection_points.vtp"
+  }
+}

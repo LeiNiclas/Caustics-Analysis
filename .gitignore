@@ -5,3 +5,8 @@ build
 *.vti
 *.mtl
 *TorusV4.obj
+
+scene.json
+
+workflow_config.local.json
+workflow_config.private.json

@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Curve Editor</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #1a1a1a; color: #e0e0e0; padding: 16px; user-select: none; }
+  h1 { font-size: 15px; font-weight: 500; margin-bottom: 12px; color: #ccc; }
+  canvas { display: block; background: #111; border: 1px solid #333; border-radius: 6px; cursor: crosshair; }
+  .controls { display: flex; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+  button { font-size: 13px; padding: 6px 14px; border: 1px solid #444; border-radius: 5px; background: #2a2a2a; color: #e0e0e0; cursor: pointer; }
+  button:hover { background: #333; }
+  button.primary { background: #1a4a7a; border-color: #2a6ab0; color: #a8d4ff; }
+  button.primary:hover { background: #1e5a90; }
+  label { font-size: 13px; color: #888; }
+  input[type=range] { width: 100px; accent-color: #378ADD; }
+  input[type=number] { width: 65px; font-size: 13px; padding: 4px 6px; background: #222; border: 1px solid #444; border-radius: 4px; color: #e0e0e0; }
+  .info { font-size: 12px; color: #666; margin-top: 8px; }
+  .tag { font-size: 11px; padding: 2px 8px; border-radius: 4px; background: #222; color: #888; border: 1px solid #333; }
+  #status { font-size: 12px; color: #4a9; margin-left: auto; }
+  .preview-box { margin-top: 12px; background: #111; border: 1px solid #333; border-radius: 6px; padding: 10px 14px; }
+  .preview-box pre { font-family: monospace; font-size: 11px; color: #888; max-height: 100px; overflow-y: auto; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+
+<h1>Curve editor <span class="tag">Catmull-Rom</span> <span class="tag" id="nTag">7 Punkte</span></h1>
+
+<canvas id="c"></canvas>
+
+<div class="controls">
+  <button onclick="resetCurve()">Reset</button>
+  <button onclick="addPoint()" title="Punkt in der Mitte hinzufügen">+ Punkt</button>
+  <button onclick="removePoint()" title="Letzten inneren Punkt entfernen">- Punkt</button>
+  <span style="width:1px; height:20px; background:#333;"></span>
+  <label>Auflösung:
+    <input type="range" id="resRange" min="4" max="100" value="30" oninput="document.getElementById('resVal').textContent=this.value; updatePreview()">
+    <span id="resVal">30</span>
+  </label>
+  <span style="width:1px; height:20px; background:#333;"></span>
+  <label>Tension:
+    <input type="range" id="tensionRange" min="0" max="100" value="50" oninput="document.getElementById('tensionVal').textContent=(this.value/100).toFixed(2); render(); updatePreview()">
+    <span id="tensionVal">0.50</span>
+  </label>
+  <span style="width:1px; height:20px; background:#333;"></span>
+  <label>Z ausgewählt:
+    <input type="number" id="zInput" step="0.02" style="width:70px" oninput="setSelectedZ(this.value)">
+  </label>
+  <button class="primary" onclick="exportJSON()">Export curve.json ↓</button>
+  <span id="status"></span>
+</div>
+
+<div class="info">Linke Maustaste: Punkt verschieben &nbsp;|&nbsp; Rechte Maustaste: Punkt auswählen (Z setzen) &nbsp;|&nbsp; Randpunkte: nur Z editierbar</div>
+
+<div class="preview-box">
+  <div style="font-size:11px; color:#555; margin-bottom:5px;">curve.json vorschau</div>
+  <pre id="preview"></pre>
+</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+// Responsive canvas size
+function resize() {
+  canvas.width  = Math.min(window.innerWidth - 32, 900);
+  canvas.height = Math.round(canvas.width * 0.45);
+  render();
+}
+window.addEventListener('resize', resize);
+
+// X range: -0.5 .. 0.5 (fixed)
+// Z range: -1.0 .. 1.0 (editable, shown as vertical axis)
+const X_MIN = -0.5, X_MAX = 0.5;
+const Z_MIN = -1.0, Z_MAX = 1.0;
+
+// Control points: array of {x, z}  (y is always fixed at -0.5, extended to 0.5 in 3D)
+// x is evenly spaced and locked for endpoints, inner points x is also locked (evenly spaced)
+let nPoints = 7;
+let pts = []; // [{x, z}]
+
+function makeEvenX(n) {
+  const result = [];
+  for (let i = 0; i < n; i++) {
+    result.push({ x: X_MIN + i * (X_MAX - X_MIN) / (n - 1), z: 0.0 });
+  }
+  return result;
+}
+
+function resetCurve() {
+  pts = makeEvenX(nPoints);
+  selectedIdx = null;
+  render();
+  updatePreview();
+}
+
+function addPoint() {
+  if (nPoints >= 12) return;
+  nPoints++;
+  // Redistribute x, keep z values by interpolation
+  const oldPts = pts.slice();
+  pts = makeEvenX(nPoints);
+  // Interpolate old z values onto new x positions
+  for (let i = 0; i < pts.length; i++) {
+    pts[i].z = interpZ(oldPts, pts[i].x);
+  }
+  document.getElementById('nTag').textContent = nPoints + ' Punkte';
+  render(); updatePreview();
+}
+
+function removePoint() {
+  if (nPoints <= 4) return;
+  nPoints--;
+  const oldPts = pts.slice();
+  pts = makeEvenX(nPoints);
+  for (let i = 0; i < pts.length; i++) {
+    pts[i].z = interpZ(oldPts, pts[i].x);
+  }
+  document.getElementById('nTag').textContent = nPoints + ' Punkte';
+  render(); updatePreview();
+}
+
+function interpZ(srcPts, x) {
+  // linear interpolation of z from srcPts at given x
+  for (let i = 0; i < srcPts.length - 1; i++) {
+    const a = srcPts[i], b = srcPts[i+1];
+    if (x >= a.x && x <= b.x) {
+      const t = (x - a.x) / (b.x - a.x);
+      return a.z * (1-t) + b.z * t;
+    }
+  }
+  return 0;
+}
+
+// ---- Canvas <-> data coordinate transforms ----
+function toCanvas(x, z) {
+  const PAD = 40;
+  const W = canvas.width, H = canvas.height;
+  const cx = PAD + (x - X_MIN) / (X_MAX - X_MIN) * (W - 2*PAD);
+  const cz = PAD + (1 - (z - Z_MIN) / (Z_MAX - Z_MIN)) * (H - 2*PAD);
+  return { cx, cz };
+}
+
+function fromCanvas(cx, cz) {
+  const PAD = 40;
+  const W = canvas.width, H = canvas.height;
+  const x = X_MIN + (cx - PAD) / (W - 2*PAD) * (X_MAX - X_MIN);
+  const z = Z_MIN + (1 - (cz - PAD) / (H - 2*PAD)) * (Z_MAX - Z_MIN);
+  return { x, z };
+}
+
+// ---- Catmull-Rom evaluation ----
+function catmullRom(p0, p1, p2, p3, t, alpha) {
+  // alpha = tension (0.5 = centripetal, 0 = uniform, 1 = chordal)
+  const t2 = t*t, t3 = t2*t;
+  const a = alpha;
+  return (
+    (-a*t3 + 2*a*t2 - a*t) * p0 +
+    ((2-a)*t3 + (a-3)*t2 + 1) * p1 +
+    ((a-2)*t3 + (3-2*a)*t2 + a*t) * p2 +
+    (a*t3 - a*t2) * p3
+  );
+}
+
+function evalSpline(pts, numSamples) {
+  const alpha = parseFloat(document.getElementById('tensionRange').value) / 100;
+  const result = [];
+  const n = pts.length;
+
+  for (let seg = 0; seg < n - 1; seg++) {
+    const p0 = pts[Math.max(0, seg-1)];
+    const p1 = pts[seg];
+    const p2 = pts[seg+1];
+    const p3 = pts[Math.min(n-1, seg+2)];
+
+    const steps = Math.max(2, Math.round(numSamples / (n-1)));
+    for (let k = 0; k < steps; k++) {
+      const t = k / steps;
+      const z = catmullRom(p0.z, p1.z, p2.z, p3.z, t, alpha);
+      const x = p1.x + t * (p2.x - p1.x); // x is linear between points
+      result.push({ x, z });
+    }
+  }
+  result.push({ x: pts[n-1].x, z: pts[n-1].z });
+  return result;
+}
+
+// ---- Render ----
+function render() {
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  // Grid
+  ctx.strokeStyle = '#222';
+  ctx.lineWidth = 0.5;
+  for (let g = 0; g <= 10; g++) {
+    const {cx} = toCanvas(X_MIN + g/10*(X_MAX-X_MIN), 0);
+    const {cz} = toCanvas(0, Z_MIN + g/10*(Z_MAX-Z_MIN));
+    ctx.beginPath(); ctx.moveTo(cx, 40); ctx.lineTo(cx, H-40); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(40, cz); ctx.lineTo(W-40, cz); ctx.stroke();
+  }
+
+  // Zero line
+  const {cz: czero} = toCanvas(0, 0);
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(40, czero); ctx.lineTo(W-40, czero); ctx.stroke();
+
+  // Axis labels
+  ctx.fillStyle = '#444';
+  ctx.font = '11px monospace';
+  ctx.fillText('X: -0.5', 42, H-24);
+  ctx.fillText('X: +0.5', W-72, H-24);
+  ctx.fillText('Z: +1.0', 44, 36);
+  ctx.fillText('Z:  0.0', 44, czero - 4);
+  ctx.fillText('Z: -1.0', 44, H-28);
+
+  // Spline curve
+  const samples = evalSpline(pts, 200);
+  ctx.beginPath();
+  for (let i = 0; i < samples.length; i++) {
+    const {cx, cz} = toCanvas(samples[i].x, samples[i].z);
+    if (i === 0) ctx.moveTo(cx, cz); else ctx.lineTo(cx, cz);
+  }
+  ctx.strokeStyle = '#378ADD';
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+
+  // Faint "extruded" preview (second curve offset)
+  ctx.beginPath();
+  for (let i = 0; i < samples.length; i++) {
+    const {cx, cz} = toCanvas(samples[i].x, samples[i].z);
+    if (i === 0) ctx.moveTo(cx + 12, cz - 8); else ctx.lineTo(cx + 12, cz - 8);
+  }
+  ctx.strokeStyle = 'rgba(55,138,221,0.2)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Connection lines between the two curves (faint)
+  ctx.strokeStyle = 'rgba(55,138,221,0.1)';
+  ctx.lineWidth = 0.8;
+  for (let i = 0; i < samples.length; i += 20) {
+    const {cx, cz} = toCanvas(samples[i].x, samples[i].z);
+    ctx.beginPath(); ctx.moveTo(cx, cz); ctx.lineTo(cx+12, cz-8); ctx.stroke();
+  }
+
+  // Control point connections (dashed)
+  ctx.setLineDash([3, 4]);
+  ctx.strokeStyle = '#3a3a3a';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = 0; i < pts.length; i++) {
+    const {cx, cz} = toCanvas(pts[i].x, pts[i].z);
+    if (i===0) ctx.moveTo(cx, cz); else ctx.lineTo(cx, cz);
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Control points
+  for (let i = 0; i < pts.length; i++) {
+    const {cx, cz} = toCanvas(pts[i].x, pts[i].z);
+    const isSel = selectedIdx === i;
+    const isEnd = i === 0 || i === pts.length - 1;
+    const r = isSel ? 8 : isEnd ? 6 : 5;
+
+    ctx.beginPath();
+    ctx.arc(cx, cz, r, 0, Math.PI*2);
+    ctx.fillStyle = isSel ? '#378ADD' : isEnd ? '#555' : '#444';
+    ctx.fill();
+    ctx.strokeStyle = isSel ? '#7ab8f0' : '#666';
+    ctx.lineWidth = isSel ? 2 : 1;
+    ctx.stroke();
+
+    // Z label
+    ctx.fillStyle = isSel ? '#a8d4ff' : '#555';
+    ctx.font = '10px monospace';
+    ctx.fillText(pts[i].z.toFixed(3), cx - 18, cz - 10);
+  }
+}
+
+// ---- Interaction ----
+let selectedIdx = null;
+let dragging = null;
+
+function nearestPoint(mx, my, radius) {
+  let best = -1, bestD = radius * radius;
+  for (let i = 0; i < pts.length; i++) {
+    const {cx, cz} = toCanvas(pts[i].x, pts[i].z);
+    const d = (cx-mx)**2 + (cz-my)**2;
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  return best;
+}
+
+canvas.addEventListener('mousedown', e => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  if (e.button === 2) {
+    const idx = nearestPoint(mx, my, 400);
+    if (idx >= 0) { selectedIdx = idx; updateZInputField(); render(); }
+    e.preventDefault(); return;
+  }
+  const idx = nearestPoint(mx, my, 400);
+  if (idx >= 0) { dragging = idx; selectedIdx = idx; }
+});
+
+canvas.addEventListener('mousemove', e => {
+  if (dragging === null) return;
+  const rect = canvas.getBoundingClientRect();
+  const my = e.clientY - rect.top;
+  const { z } = fromCanvas(0, my);
+  pts[dragging].z = Math.max(Z_MIN, Math.min(Z_MAX, z));
+  updateZInputField();
+  render(); updatePreview();
+});
+
+canvas.addEventListener('mouseup', () => { dragging = null; });
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+function updateZInputField() {
+  const idx = selectedIdx;
+  if (idx !== null) {
+    document.getElementById('zInput').value = pts[idx].z.toFixed(4);
+  }
+}
+
+function setSelectedZ(val) {
+  if (selectedIdx === null) return;
+  pts[selectedIdx].z = Math.max(Z_MIN, Math.min(Z_MAX, parseFloat(val) || 0));
+  render(); updatePreview();
+}
+
+// ---- JSON export ----
+function buildJSON() {
+  const resolution = parseInt(document.getElementById('resRange').value);
+  const tension = parseFloat(document.getElementById('tensionRange').value) / 100;
+  return {
+    type: "catmull_rom",
+    tension: tension,
+    resolution: resolution,
+    yStart: -0.5,
+    yEnd: 0.5,
+    controlPoints: pts.map((p, i) => ({
+      index: i,
+      x: parseFloat(p.x.toFixed(6)),
+      z: parseFloat(p.z.toFixed(6))
+    }))
+  };
+}
+
+function updatePreview() {
+  const data = buildJSON();
+  document.getElementById('preview').textContent =
+    JSON.stringify(data, null, 2).slice(0, 500) + (JSON.stringify(data).length > 500 ? '\n  ...' : '');
+}
+
+function exportJSON() {
+  const data = buildJSON();
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'curve.json';
+  a.click();
+  document.getElementById('status').textContent = 'curve.json gespeichert ✓';
+  setTimeout(() => document.getElementById('status').textContent = '', 3000);
+}
+
+resetCurve();
+resize();
+</script>
+</body>
+</html>
