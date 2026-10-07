@@ -4,7 +4,12 @@
     "implicitSurface": {
         "type": "torus",
         "param0": 0.75,
-        "param1": 0.5
+        "param1": 0.5,
+        "preview": {
+            "enabled": true,
+            "resolution": 128,
+            "output": "implicit_surface.vtp"
+        }
     },
     "lights": [
         {

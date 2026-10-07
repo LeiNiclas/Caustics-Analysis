@@ -38,10 +38,14 @@ SceneConfig loadScene(const std::string& path)
     }
 
     auto implicitSurface = j.value("implicitSurface", json::object());
+    auto preview = implicitSurface.value("preview", json::object());
     scene.implicitSurface = {
         implicitSurface.value("type", std::string("torus")),
         implicitSurface.value("param0", 0.75f),
-        implicitSurface.value("param1", 0.5f)
+        implicitSurface.value("param1", 0.5f),
+        preview.value("enabled", true),
+        preview.value("resolution", 128),
+        preview.value("output", std::string("implicit_surface.vtp"))
     };
 
     for (auto& mesh : j["meshes"])

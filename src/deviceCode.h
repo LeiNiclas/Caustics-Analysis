@@ -2,6 +2,7 @@
 
 #include <owl/owl.h>
 #include <owl/common/math/vec.h>
+#include "implicitSurface.h"
 
 using namespace owl;
 
@@ -65,18 +66,6 @@ struct MissProgData
 {
     vec3f color0; 
     vec3f color1;
-};
-
-
-enum ImplicitType
-{
-    IMPLICIT_TORUS,
-    IMPLICIT_PARABOLA,
-    IMPLICIT_GYROID,
-    IMPLICIT_PERTUBED_PARABOLOID,
-    IMPLICIT_CUSHION_SURFACE,
-    IMPLICIT_TANGLECUBE,
-    IMPLICIT_HYPERBOLIC_PARABOLOID
 };
 
 

@@ -100,9 +100,7 @@ std::vector<LightSource> generateSphereLights(int count, vec3f gridCenter, float
     return lights;
 }
 
-SceneVars createScene(const std::string& sceneFilePath){
-    SceneConfig scene = loadScene(sceneFilePath);
-
+SceneVars createScene(const SceneConfig& scene){
     std::vector<LightSource> activeLights;
 
     if (scene.sphereLights.enabled)
@@ -138,8 +136,32 @@ SceneVars createScene(const std::string& sceneFilePath){
 
 int main(int ac, char **av){
     std::string sceneFilePath = (ac > 1) ? av[1] : defaultSceneFileName;
-    SceneVars scene = createScene(sceneFilePath);
-    const ImplicitType implicitType = getImplicitType(scene.config.implicitSurface.type);
+    const SceneConfig config = loadScene(sceneFilePath);
+    const ImplicitType implicitType = getImplicitType(config.implicitSurface.type);
+    const bool previewOnly = ac > 2 && std::string(av[2]) == "--preview-only";
+
+    if (previewOnly)
+    {
+        if (!config.implicitSurface.previewEnabled)
+        {
+            std::cout << "Implicit surface preview is disabled in the scene config.\n";
+            return 0;
+        }
+
+        exportImplicitSurfaceVTP(
+            config.implicitSurface.previewOutput,
+            implicitType,
+            config.implicitSurface.param0,
+            config.implicitSurface.param1,
+            config.grid.origin,
+            config.grid.size,
+            config.implicitSurface.previewResolution);
+        std::cout << "Wrote implicit surface preview to "
+                  << config.implicitSurface.previewOutput << '\n';
+        return 0;
+    }
+
+    SceneVars scene = createScene(config);
 
     // Initialize CUDA and Optix
     OWLContext context = owlContextCreate(nullptr, 1);

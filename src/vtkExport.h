@@ -2,6 +2,7 @@
 #include <cstddef>
 #include <string>
 #include <owl/common/math/vec.h>
+#include "implicitSurface.h"
 
 void exportVTI(
     const std::string& filename,
@@ -16,4 +17,14 @@ void exportPointsVTP(
     const std::string& filename,
     const float* xyzPoints,
     std::size_t pointCount
+);
+
+void exportImplicitSurfaceVTP(
+    const std::string& filename,
+    ImplicitType type,
+    float param0,
+    float param1,
+    owl::vec3f origin,
+    owl::vec3f size,
+    int resolution
 );

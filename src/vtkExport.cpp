@@ -5,6 +5,9 @@
 #include <iomanip>
 #include <limits>
 #include <vector>
+#include <array>
+#include <algorithm>
+#include <cmath>
 
 #define VERTICES_PER_CELL 8
 #define CELL_TYPE 12
@@ -179,6 +182,181 @@ void exportPointsVTP(
     f << "        </DataArray>\n";
     f << "      </Verts>\n";
 
+    f << "    </Piece>\n";
+    f << "  </PolyData>\n";
+    f << "</VTKFile>\n";
+
+    if (!f)
+        throw std::runtime_error("Failed while writing VTK file: " + filename);
+}
+
+void exportImplicitSurfaceVTP(
+    const std::string& filename,
+    ImplicitType type,
+    float param0,
+    float param1,
+    owl::vec3f origin,
+    owl::vec3f size,
+    int resolution
+)
+{
+    if (resolution < 8 || resolution > 256)
+        throw std::invalid_argument("Implicit surface preview resolution must be between 8 and 256.");
+    if (!(size.x > 0.0f && size.y > 0.0f && size.z > 0.0f))
+        throw std::invalid_argument("Implicit surface preview bounds must have positive size.");
+    if (!std::isfinite(origin.x) || !std::isfinite(origin.y) || !std::isfinite(origin.z)
+        || !std::isfinite(size.x) || !std::isfinite(size.y) || !std::isfinite(size.z)
+        || !std::isfinite(param0) || !std::isfinite(param1))
+        throw std::invalid_argument("Implicit surface preview bounds and parameters must be finite.");
+
+    const int sampleCount = resolution + 1;
+    const std::size_t totalSamples = static_cast<std::size_t>(sampleCount) * sampleCount * sampleCount;
+    const owl::vec3f step = size / static_cast<float>(resolution);
+    std::vector<float> values(totalSamples);
+    auto sampleIndex = [sampleCount](int x, int y, int z) {
+        return static_cast<std::size_t>(x)
+             + static_cast<std::size_t>(sampleCount) * y
+             + static_cast<std::size_t>(sampleCount) * sampleCount * z;
+    };
+    auto samplePosition = [&](int x, int y, int z) {
+        return origin + owl::vec3f(
+            static_cast<float>(x) * step.x,
+            static_cast<float>(y) * step.y,
+            static_cast<float>(z) * step.z);
+    };
+    auto positionForSample = [&](int index) {
+        const int x = index % sampleCount;
+        const int y = (index / sampleCount) % sampleCount;
+        const int z = index / (sampleCount * sampleCount);
+        return samplePosition(x, y, z);
+    };
+
+    for (int z = 0; z < sampleCount; ++z)
+    for (int y = 0; y < sampleCount; ++y)
+    for (int x = 0; x < sampleCount; ++x)
+        values[sampleIndex(x, y, z)] =
+            evalImplicitSurface(type, samplePosition(x, y, z), param0, param1);
+
+    constexpr int cornerX[8] = { 0, 1, 1, 0, 0, 1, 1, 0 };
+    constexpr int cornerY[8] = { 0, 0, 1, 1, 0, 0, 1, 1 };
+    constexpr int cornerZ[8] = { 0, 0, 0, 0, 1, 1, 1, 1 };
+    constexpr int tetrahedra[6][4] = {
+        { 0, 5, 1, 6 }, { 0, 1, 2, 6 }, { 0, 2, 3, 6 },
+        { 0, 3, 7, 6 }, { 0, 7, 4, 6 }, { 0, 4, 5, 6 }
+    };
+    std::vector<owl::vec3f> vertices;
+
+    auto interpolate = [&](int a, int b) {
+        const float va = values[static_cast<std::size_t>(a)];
+        const float vb = values[static_cast<std::size_t>(b)];
+        const float t = std::max(0.0f, std::min(1.0f, va / (va - vb)));
+        const owl::vec3f pa = positionForSample(a);
+        return pa + t * (positionForSample(b) - pa);
+    };
+    auto addTriangle = [&](owl::vec3f a, owl::vec3f b, owl::vec3f c, owl::vec3f outward) {
+        const owl::vec3f ab = b - a;
+        const owl::vec3f ac = c - a;
+        owl::vec3f normal = owl::cross(ab, ac);
+        if (normal.x * normal.x + normal.y * normal.y + normal.z * normal.z <= 1.0e-20f)
+            return;
+        if (normal.x * outward.x + normal.y * outward.y + normal.z * outward.z < 0.0f)
+            std::swap(b, c);
+        vertices.push_back(a);
+        vertices.push_back(b);
+        vertices.push_back(c);
+    };
+
+    for (int z = 0; z < resolution; ++z)
+    for (int y = 0; y < resolution; ++y)
+    for (int x = 0; x < resolution; ++x)
+    {
+        std::array<int, 8> cubeIndices;
+        for (int corner = 0; corner < 8; ++corner)
+        {
+            cubeIndices[corner] = static_cast<int>(sampleIndex(
+                x + cornerX[corner], y + cornerY[corner], z + cornerZ[corner]));
+        }
+
+        for (const auto& tetra : tetrahedra)
+        {
+            int inside[4], outside[4];
+            int insideCount = 0, outsideCount = 0;
+            for (int vertex = 0; vertex < 4; ++vertex)
+            {
+                const int index = cubeIndices[tetra[vertex]];
+                if (values[static_cast<std::size_t>(index)] < 0.0f)
+                    inside[insideCount++] = index;
+                else
+                    outside[outsideCount++] = index;
+            }
+
+            if (insideCount == 0 || insideCount == 4)
+                continue;
+
+            if (insideCount == 1 || insideCount == 3)
+            {
+                const int* singleSide = insideCount == 1 ? inside : outside;
+                const int* otherSide = insideCount == 1 ? outside : inside;
+                owl::vec3f outward(0.0f);
+                for (int i = 0; i < 3; ++i)
+                    outward += positionForSample(otherSide[i]);
+                outward = (insideCount == 1)
+                    ? outward / 3.0f - positionForSample(singleSide[0])
+                    : positionForSample(singleSide[0]) - outward / 3.0f;
+                addTriangle(
+                    interpolate(singleSide[0], otherSide[0]),
+                    interpolate(singleSide[0], otherSide[1]),
+                    interpolate(singleSide[0], otherSide[2]),
+                    outward);
+            }
+            else
+            {
+                const owl::vec3f outward =
+                    0.5f * (positionForSample(outside[0]) + positionForSample(outside[1])
+                          - positionForSample(inside[0]) - positionForSample(inside[1]));
+                const owl::vec3f ac = interpolate(inside[0], outside[0]);
+                const owl::vec3f ad = interpolate(inside[0], outside[1]);
+                const owl::vec3f bc = interpolate(inside[1], outside[0]);
+                const owl::vec3f bd = interpolate(inside[1], outside[1]);
+                addTriangle(ac, ad, bd, outward);
+                addTriangle(ac, bd, bc, outward);
+            }
+        }
+    }
+
+    if (vertices.empty())
+        throw std::runtime_error("No implicit surface intersects the preview bounds.");
+    if (vertices.size() > static_cast<std::size_t>(std::numeric_limits<int32_t>::max()))
+        throw std::runtime_error("Implicit surface preview exceeds VTK Int32 connectivity capacity.");
+
+    std::ofstream f(filename);
+    if (!f.is_open())
+        throw std::runtime_error("Could not open VTK file: " + filename);
+
+    const std::size_t triangleCount = vertices.size() / 3;
+    f << std::setprecision(std::numeric_limits<float>::max_digits10);
+    f << "<?xml version=\"1.0\"?>\n";
+    f << "<VTKFile type=\"PolyData\" version=\"0.1\" byte_order=\"LittleEndian\">\n";
+    f << "  <PolyData>\n";
+    f << "    <Piece NumberOfPoints=\"" << vertices.size()
+      << "\" NumberOfVerts=\"0\" NumberOfLines=\"0\" NumberOfStrips=\"0\""
+      << " NumberOfPolys=\"" << triangleCount << "\">\n";
+    f << "      <Points>\n";
+    f << "        <DataArray type=\"Float32\" NumberOfComponents=\"3\" format=\"ascii\">\n";
+    for (const owl::vec3f& point : vertices)
+        f << "          " << point.x << ' ' << point.y << ' ' << point.z << '\n';
+    f << "        </DataArray>\n";
+    f << "      </Points>\n";
+    f << "      <Polys>\n";
+    f << "        <DataArray type=\"Int32\" Name=\"connectivity\" format=\"ascii\">\n";
+    for (std::size_t i = 0; i < vertices.size(); ++i)
+        f << "          " << i << '\n';
+    f << "        </DataArray>\n";
+    f << "        <DataArray type=\"Int32\" Name=\"offsets\" format=\"ascii\">\n";
+    for (std::size_t i = 1; i <= triangleCount; ++i)
+        f << "          " << 3 * i << '\n';
+    f << "        </DataArray>\n";
+    f << "      </Polys>\n";
     f << "    </Piece>\n";
     f << "  </PolyData>\n";
     f << "</VTKFile>\n";

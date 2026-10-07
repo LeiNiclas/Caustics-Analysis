@@ -273,6 +273,26 @@ class PipelineHandler(FileSystemEventHandler):
         print("Pipeline done. Waiting for changes...")
         
     
+    def generate_implicit_preview(self, master):
+        implicit_surface = master.get("implicitSurface", {})
+        preview = implicit_surface.get("preview", {})
+        if not preview.get("enabled", True):
+            return True
+
+        print("Generating implicit surface preview...")
+        with open(SCENE_JSON, "w") as f:
+            json.dump(master, f, indent=4)
+
+        result = subprocess.run(
+            [self.exe_path, SCENE_JSON, "--preview-only"],
+            cwd=self.work_dir,
+            capture_output=False
+        )
+        if result.returncode != 0:
+            print(f"Implicit surface preview generation failed with code {result.returncode}.")
+            return False
+        return True
+
     
     def run_pipeline(self):
         with open(MASTER_SCENE_JSON) as f:
@@ -280,6 +300,8 @@ class PipelineHandler(FileSystemEventHandler):
         
         if master.get(REFLECTION_FLAG, False):
             if self.exe_path and os.path.isfile(self.exe_path):
+                if not self.generate_implicit_preview(master):
+                    return
                 self.run_reflection_stage(master)
             return
         
@@ -301,6 +323,9 @@ class PipelineHandler(FileSystemEventHandler):
         
         if not (self.exe_path and os.path.isfile(self.exe_path)):
             print("No renderer executable found, skipping renderer step.")
+            return
+
+        if not self.generate_implicit_preview(master):
             return
 
         use_octant_splitting = master.get("use_octant_splitting", False)

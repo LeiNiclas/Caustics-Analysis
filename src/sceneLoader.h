@@ -41,6 +41,9 @@ struct ImplicitSurfaceConfig
     std::string type;
     float param0;
     float param1;
+    bool previewEnabled;
+    int previewResolution;
+    std::string previewOutput;
 };
 
 struct SceneConfig
