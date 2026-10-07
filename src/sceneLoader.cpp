@@ -37,6 +37,13 @@ SceneConfig loadScene(const std::string& path)
         scene.sphereLights.coneAngleMarginDeg = sl.value("coneAngleMarginDeg", 5.0f);
     }
 
+    auto implicitSurface = j.value("implicitSurface", json::object());
+    scene.implicitSurface = {
+        implicitSurface.value("type", std::string("torus")),
+        implicitSurface.value("param0", 0.75f),
+        implicitSurface.value("param1", 0.5f)
+    };
+
     for (auto& mesh : j["meshes"])
     {
         scene.meshes.push_back(

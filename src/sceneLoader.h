@@ -36,12 +36,20 @@ struct SphereLightConfig
     float coneAngleMarginDeg;
 };
 
+struct ImplicitSurfaceConfig
+{
+    std::string type;
+    float param0;
+    float param1;
+};
+
 struct SceneConfig
 {
     std::vector<LightSource> lights;
     std::vector<MeshInstance> meshes;
     GridConfig grid;
     SphereLightConfig sphereLights;
+    ImplicitSurfaceConfig implicitSurface;
 };
 
 SceneConfig loadScene(const std::string& path);

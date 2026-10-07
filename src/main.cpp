@@ -27,6 +27,22 @@ struct SceneVars{
     std::vector<LightSource> activeLights;
 };
 
+ImplicitType getImplicitType(const std::string& type)
+{
+    if (type == "torus") return IMPLICIT_TORUS;
+    if (type == "parabola") return IMPLICIT_PARABOLA;
+    if (type == "gyroid") return IMPLICIT_GYROID;
+    if (type == "perturbed_paraboloid") return IMPLICIT_PERTUBED_PARABOLOID;
+    if (type == "cushion_surface") return IMPLICIT_CUSHION_SURFACE;
+    if (type == "tanglecube") return IMPLICIT_TANGLECUBE;
+    if (type == "hyperbolic_paraboloid") return IMPLICIT_HYPERBOLIC_PARABOLOID;
+
+    throw std::runtime_error(
+        "Unsupported implicitSurface.type '" + type
+        + "'. Expected torus, parabola, gyroid, perturbed_paraboloid, "
+          "cushion_surface, tanglecube, or hyperbolic_paraboloid.");
+}
+
 
 // ---- CAMERA ----
 void setupCameraFromLight(OWLRayGen rayGen, OWLBuffer frameBuffer, OWLGroup world, const LightSource& light, const vec2i& fbSize)
@@ -104,14 +120,15 @@ SceneVars createScene(const std::string& sceneFilePath){
         activeLights = scene.lights;
     }
 
+    SceneVars sceneVars = SceneVars();
+    sceneVars.config = scene;
+
     if (activeLights.empty())
     {
         std::cerr << "No light sources in scene.json." << std::endl;
-        return SceneVars();
+        return sceneVars;
     }
 
-    SceneVars sceneVars = SceneVars();
-    sceneVars.config = scene;
     sceneVars.activeLights = std::vector<LightSource>(activeLights);
 
     return sceneVars;
@@ -121,6 +138,8 @@ SceneVars createScene(const std::string& sceneFilePath){
 
 int main(int ac, char **av){
     std::string sceneFilePath = (ac > 1) ? av[1] : defaultSceneFileName;
+    SceneVars scene = createScene(sceneFilePath);
+    const ImplicitType implicitType = getImplicitType(scene.config.implicitSurface.type);
 
     // Initialize CUDA and Optix
     OWLContext context = owlContextCreate(nullptr, 1);
@@ -166,14 +185,11 @@ int main(int ac, char **av){
 
     // -------- DEFINE IMPLICIT SURFACE --------
     OWLGeom implicitGeom = owlGeomCreate(context, implicitGeomType);
-    owlGeomSet1i(implicitGeom, "type", IMPLICIT_TORUS);
-    owlGeomSet1f(implicitGeom, "param0", 0.75f);
-    owlGeomSet1f(implicitGeom, "param1", 0.5f);
+    owlGeomSet1i(implicitGeom, "type", implicitType);
+    owlGeomSet1f(implicitGeom, "param0", scene.config.implicitSurface.param0);
+    owlGeomSet1f(implicitGeom, "param1", scene.config.implicitSurface.param1);
     owlGeomSetPrimCount(implicitGeom, 1);
 
-
-    // Load scene from config
-    SceneVars scene = createScene(sceneFilePath);
 
     const MeshInstance* causticsMeshConfig = nullptr;
     for (const MeshInstance& mesh : scene.config.meshes)

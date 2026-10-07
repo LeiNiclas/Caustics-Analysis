@@ -1,6 +1,11 @@
 {
     "caustic_threshold_factor": 0.3,
     "compute_reflections": false,
+    "implicitSurface": {
+        "type": "torus",
+        "param0": 0.75,
+        "param1": 0.5
+    },
     "lights": [
         {
             "type": "punctual",
