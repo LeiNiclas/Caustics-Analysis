@@ -34,7 +34,10 @@ __device__ inline vec3f gyroidNormal(vec3f position)
     float sz = sinf(z);
     float cz = cosf(z);
 
-    return normalize(vec3f(cx*cy-sx*sz, cy*cz-sx*sy, cx*cz-sy*sz));
+    return normalize(vec3f(
+        cx * (sy + sz),
+        cy * (sx + sz),
+        cz * (sx + sy)));
 }
 
 
@@ -57,9 +60,9 @@ __device__ inline vec3f cushionSurfaceNormal(vec3f position)
 
     vec3f normal;
 
-    normal.x = -4*x*x*x - 4*x*y*y + 2*x*z*z + 2*x;
+    normal.x = -4*x*x*x - 4*x*y*y + 6*x*z*z - 4*x*z + 2*x;
     normal.y = -4*x*x*y - 4*y*y*y - 2*y*z*z + 4*y*z + 2*y;
-    normal.z = 2*x*x*z - 2*y*y*z + 2*y*y - 4*z*z*z + 6*z*z - 4*z;
+    normal.z = 6*x*x*z - 2*y*y*z + 2*y*y - 8*z*z*z + 6*z*z - 2*x*x - 2*z;
 
     return normalize(normal);
 }

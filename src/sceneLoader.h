@@ -53,6 +53,8 @@ struct SceneConfig
     GridConfig grid;
     SphereLightConfig sphereLights;
     ImplicitSurfaceConfig implicitSurface;
+    bool computeReflections;
+    bool useConvexHullForReflectionGathering;
 };
 
 SceneConfig loadScene(const std::string& path);

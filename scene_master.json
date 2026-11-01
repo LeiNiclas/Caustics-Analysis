@@ -1,8 +1,9 @@
 {
-    "caustic_threshold_factor": 0.3,
+    "caustic_threshold_factor": 0.2,
     "compute_reflections": false,
+    "useConvexHullForReflectionGathering": true,
     "implicitSurface": {
-        "type": "torus",
+        "type": "parabola",
         "param0": 0.75,
         "param1": 0.5,
         "preview": {
@@ -27,8 +28,8 @@
                 "b": 1.0,
                 "a": 1.0
             },
-            "resolutionX": 100,
-            "resolutionY": 100
+            "resolutionX": 512,
+            "resolutionY": 512
         }
     ],
     "sphereLights": {

@@ -19,6 +19,13 @@ void exportPointsVTP(
     std::size_t pointCount
 );
 
+void exportReflectionTrajectoriesVTP(
+    const std::string& filename,
+    const float* reflectionAndMeshPoints,
+    const int* lightIndices,
+    std::size_t trajectoryCount
+);
+
 void exportImplicitSurfaceVTP(
     const std::string& filename,
     ImplicitType type,

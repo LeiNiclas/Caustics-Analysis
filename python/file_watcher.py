@@ -247,6 +247,9 @@ class PipelineHandler(FileSystemEventHandler):
             }
             
             scene = copy.deepcopy(master)
+            scene[REFLECTION_FLAG] = False
+            for mesh in scene.get("meshes", []):
+                mesh["isCausticsMesh"] = False
             scene["grid"]["origin"] = octant_origin
             scene["grid"]["size"] = half_size
             scene["grid"]["resolution"] = half_res

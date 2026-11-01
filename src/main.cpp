@@ -13,11 +13,6 @@ extern "C" char deviceCode_ptx[];
 
 const char *defaultSceneFileName = "scene.json";
 
-// Light dimensions 
-const int W = pow(2, 11);
-const int H = pow(2, 11);
-
-const vec2i fbSize(W, H);
 const vec3f lookUp(0.0f, 1.0f, 0.0f);
 const float orthoHeight = 1.0f;
 
@@ -162,6 +157,14 @@ int main(int ac, char **av){
     }
 
     SceneVars scene = createScene(config);
+    vec2i fbSize(0);
+    for (const LightSource& light : scene.activeLights)
+    {
+        if (light.resX <= 0 || light.resY <= 0)
+            throw std::runtime_error("Light resolutions must be positive.");
+        fbSize.x = std::max(fbSize.x, light.resX);
+        fbSize.y = std::max(fbSize.y, light.resY);
+    }
 
     // Initialize CUDA and Optix
     OWLContext context = owlContextCreate(nullptr, 1);
@@ -214,26 +217,42 @@ int main(int ac, char **av){
 
 
     const MeshInstance* causticsMeshConfig = nullptr;
-    for (const MeshInstance& mesh : scene.config.meshes)
+    if (scene.config.computeReflections)
     {
-        if (!mesh.isCausticsMesh)
-            continue;
-        if (causticsMeshConfig)
-            throw std::runtime_error("scene.json must mark at most one mesh as isCausticsMesh.");
-        causticsMeshConfig = &mesh;
+        for (const MeshInstance& mesh : scene.config.meshes)
+        {
+            if (!mesh.isCausticsMesh)
+                continue;
+            if (causticsMeshConfig)
+                throw std::runtime_error("scene.json must mark at most one mesh as isCausticsMesh.");
+            causticsMeshConfig = &mesh;
+        }
     }
 
     TriangleMesh causticsMesh;
+    TriangleMesh reflectionQueryMesh;
     if (causticsMeshConfig)
     {
         causticsMesh = loadObj(causticsMeshConfig->objPath);
-        applyTransform(causticsMesh, causticsMeshConfig->position,
-                       causticsMeshConfig->rotation, causticsMeshConfig->scale);
         if (causticsMesh.vertices.empty() || causticsMesh.indices.empty())
             throw std::runtime_error("The mesh marked isCausticsMesh has no triangles.");
-        std::cout << "Loaded caustics ridge mesh " << causticsMeshConfig->objPath
-                  << " (" << causticsMesh.vertices.size() << " vertices, "
-                  << causticsMesh.indices.size() << " triangles)\n";
+        if (scene.config.useConvexHullForReflectionGathering)
+        {
+            causticsMesh = convexHull(causticsMesh);
+            saveObj(causticsMesh, causticsMeshConfig->objPath);
+            std::cout << "Saved convex hull over the combined caustics mesh at "
+                      << causticsMeshConfig->objPath << " ("
+                      << causticsMesh.vertices.size() << " vertices, "
+                      << causticsMesh.indices.size() << " triangles)\n";
+        }
+        else
+            std::cout << "Loaded caustics ridge mesh " << causticsMeshConfig->objPath
+                      << " (" << causticsMesh.vertices.size() << " vertices, "
+                      << causticsMesh.indices.size() << " triangles)\n";
+
+        applyTransform(causticsMesh, causticsMeshConfig->position,
+                       causticsMeshConfig->rotation, causticsMeshConfig->scale);
+        reflectionQueryMesh = causticsMesh;
     }
 
     // Set grid params
@@ -249,10 +268,13 @@ int main(int ac, char **av){
     // ---- Reflection capture buffers ----
     const uint32_t reflectionCapacity = static_cast<uint32_t>(
         fbSize.x * fbSize.y * scene.activeLights.size());
-    const int reflectionBufferSize = 3 * static_cast<int>(reflectionCapacity);
+    const int reflectionBufferSize = 6 * static_cast<int>(reflectionCapacity);
     std::vector<float> zerosReflection(reflectionBufferSize, 0.f);
     OWLBuffer reflectionPoints = owlDeviceBufferCreate(
         context, OWL_FLOAT, reflectionBufferSize, zerosReflection.data());
+    std::vector<int> zerosLightIndices(reflectionCapacity, 0);
+    OWLBuffer reflectionLightIndices = owlDeviceBufferCreate(
+        context, OWL_INT, reflectionCapacity, zerosLightIndices.data());
     const int zeroCounter = 0;
     OWLBuffer counterBuffer = owlDeviceBufferCreate(context, OWL_INT, 1, &zeroCounter);
 
@@ -300,8 +322,10 @@ int main(int ac, char **av){
         { "isPunctual",     OWL_INT,    OWL_OFFSETOF(RayGenData, isPunctual)},
         { "coneAngle",      OWL_FLOAT,  OWL_OFFSETOF(RayGenData, camera.coneAngle)},
         { "reflectionPoints", OWL_BUFPTR, OWL_OFFSETOF(RayGenData, reflectionPoints)},
+        { "reflectionLightIndices", OWL_BUFPTR, OWL_OFFSETOF(RayGenData, reflectionLightIndices)},
         { "reflectionCounter", OWL_BUFPTR, OWL_OFFSETOF(RayGenData, reflectionCounter)},
         { "reflectionCapacity", OWL_INT, OWL_OFFSETOF(RayGenData, reflectionCapacity)},
+        { "lightIndex", OWL_INT, OWL_OFFSETOF(RayGenData, lightIndex)},
         { /* sentinel to mark end of list */ }
     };
 
@@ -320,6 +344,7 @@ int main(int ac, char **av){
     owlRayGenSetBuffer(rayGen, "primaryGrid", primaryGridBuffer);
     owlRayGenSetBuffer(rayGen, "bounceGrid", bounceGridBuffer);
     owlRayGenSetBuffer(rayGen, "reflectionPoints", reflectionPoints);
+    owlRayGenSetBuffer(rayGen, "reflectionLightIndices", reflectionLightIndices);
     owlRayGenSetBuffer(rayGen, "reflectionCounter", counterBuffer);
     owlRayGenSet1i(rayGen, "reflectionCapacity", static_cast<int>(reflectionCapacity));
     owlRayGenSet3f(rayGen, "gridOrigin", (const owl3f&)gridOrigin);
@@ -341,15 +366,15 @@ int main(int ac, char **av){
     if (causticsMeshConfig)
     {
         OWLBuffer vertexBuffer = owlDeviceBufferCreate(
-            context, OWL_FLOAT3, causticsMesh.vertices.size(), causticsMesh.vertices.data());
+            context, OWL_FLOAT3, reflectionQueryMesh.vertices.size(), reflectionQueryMesh.vertices.data());
         OWLBuffer indexBuffer = owlDeviceBufferCreate(
-            context, OWL_INT3, causticsMesh.indices.size(), causticsMesh.indices.data());
+            context, OWL_INT3, reflectionQueryMesh.indices.size(), reflectionQueryMesh.indices.data());
 
         OWLGeom causticsGeom = owlGeomCreate(context, trianglesGeomType);
         owlTrianglesSetVertices(causticsGeom, vertexBuffer,
-                               causticsMesh.vertices.size(), sizeof(vec3f), 0);
+                               reflectionQueryMesh.vertices.size(), sizeof(vec3f), 0);
         owlTrianglesSetIndices(causticsGeom, indexBuffer,
-                              causticsMesh.indices.size(), sizeof(vec3i), 0);
+                              reflectionQueryMesh.indices.size(), sizeof(vec3i), 0);
         owlGeomSetBuffer(causticsGeom, "vertex", vertexBuffer);
         owlGeomSetBuffer(causticsGeom, "index", indexBuffer);
 
@@ -370,9 +395,11 @@ int main(int ac, char **av){
         std::cout << "Rendering Light " << i
                   << " at (" << light.position.x << ", " << light.position.y << ", " << light.position.z << ")";
         
-        setupCameraFromLight(rayGen, frameBuffer, world, light, fbSize);
+        const vec2i lightFbSize(light.resX, light.resY);
+        setupCameraFromLight(rayGen, frameBuffer, world, light, lightFbSize);
+        owlRayGenSet1i(rayGen, "lightIndex", i);
         owlBuildSBT(context);
-        owlRayGenLaunch2D(rayGen, fbSize.x, fbSize.y);
+        owlRayGenLaunch2D(rayGen, lightFbSize.x, lightFbSize.y);
     }
     std::cout << "Done\n";
 
@@ -383,6 +410,7 @@ int main(int ac, char **av){
     std::vector<double> hostPrimary(totalCells);
     std::vector<double> hostBounce(totalCells);
     std::vector<float>  hostReflections(reflectionBufferSize);
+    std::vector<int> hostReflectionLightIndices(reflectionCapacity);
     int hostReflectionCount = 0;
 
     cudaMemcpy(hostPrimary.data(), owlBufferGetPointer(primaryGridBuffer, 0),
@@ -391,6 +419,8 @@ int main(int ac, char **av){
                totalCells * sizeof(double), cudaMemcpyDeviceToHost);
     cudaMemcpy(hostReflections.data(), owlBufferGetPointer(reflectionPoints, 0),
                reflectionBufferSize * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(hostReflectionLightIndices.data(), owlBufferGetPointer(reflectionLightIndices, 0),
+               reflectionCapacity * sizeof(int), cudaMemcpyDeviceToHost);
     cudaMemcpy(&hostReflectionCount, owlBufferGetPointer(counterBuffer, 0),
                sizeof(int), cudaMemcpyDeviceToHost);
 
@@ -406,7 +436,21 @@ int main(int ac, char **av){
     
     if (causticsMeshConfig)
     {
-        exportPointsVTP("caustic_reflection_points.vtp", hostReflections.data(), exportedReflectionCount);
+        std::vector<float> hostReflectionPoints(3 * exportedReflectionCount);
+        for (std::size_t i = 0; i < exportedReflectionCount; ++i)
+        {
+            const std::size_t source = 6 * i;
+            const std::size_t destination = 3 * i;
+            hostReflectionPoints[destination] = hostReflections[source];
+            hostReflectionPoints[destination + 1] = hostReflections[source + 1];
+            hostReflectionPoints[destination + 2] = hostReflections[source + 2];
+        }
+        exportPointsVTP("caustic_reflection_points.vtp", hostReflectionPoints.data(), exportedReflectionCount);
+        exportReflectionTrajectoriesVTP(
+            "caustic_reflection_paths.vtp",
+            hostReflections.data(),
+            hostReflectionLightIndices.data(),
+            exportedReflectionCount);
 
         std::cout << "Reflected rays hitting the caustics mesh: "
                   << exportedReflectionCount << std::endl;
@@ -420,6 +464,8 @@ int main(int ac, char **av){
 
     // -------- CLEAN UP --------
     owlBufferRelease(frameBuffer);
+    owlBufferRelease(reflectionLightIndices);
+    owlBufferRelease(reflectionPoints);
     owlBufferRelease(counterBuffer);
     // for (auto& vb : vertexBuffers) owlBufferRelease(vb);
     // for (auto& ib : indexBuffers) owlBufferRelease(ib);

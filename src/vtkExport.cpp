@@ -190,6 +190,107 @@ void exportPointsVTP(
         throw std::runtime_error("Failed while writing VTK file: " + filename);
 }
 
+void exportReflectionTrajectoriesVTP(
+    const std::string& filename,
+    const float* reflectionAndMeshPoints,
+    const int* lightIndices,
+    std::size_t trajectoryCount
+)
+{
+    if (trajectoryCount > 0 && (!reflectionAndMeshPoints || !lightIndices))
+        throw std::invalid_argument("Reflection trajectory data pointer is null.");
+    if (trajectoryCount > static_cast<std::size_t>(std::numeric_limits<int32_t>::max() / 2))
+        throw std::invalid_argument("Trajectory count exceeds VTK Int32 connectivity capacity.");
+
+    std::ofstream f(filename);
+    if (!f.is_open())
+        throw std::runtime_error("Could not open VTK file: " + filename);
+
+    const std::size_t pointCount = trajectoryCount * 2;
+    f << std::setprecision(std::numeric_limits<float>::max_digits10);
+    f << "<?xml version=\"1.0\"?>\n";
+    f << "<VTKFile type=\"PolyData\" version=\"0.1\" byte_order=\"LittleEndian\">\n";
+    f << "  <PolyData>\n";
+    f << "    <Piece NumberOfPoints=\"" << pointCount
+        << "\" NumberOfVerts=\"" << trajectoryCount
+        << "\" NumberOfLines=\"" << trajectoryCount
+        << "\" NumberOfStrips=\"0\" NumberOfPolys=\"0\">\n";
+
+    f << "      <PointData Scalars=\"point_role\">\n";
+    f << "        <DataArray type=\"Int32\" Name=\"ray_id\" format=\"ascii\">\n";
+    for (std::size_t i = 0; i < trajectoryCount; ++i)
+        f << "          " << i << ' ' << i << '\n';
+    f << "        </DataArray>\n";
+    f << "        <DataArray type=\"Int32\" Name=\"light_id\" format=\"ascii\">\n";
+    for (std::size_t i = 0; i < trajectoryCount; ++i)
+        f << "          " << lightIndices[i] << ' ' << lightIndices[i] << '\n';
+    f << "        </DataArray>\n";
+    f << "        <DataArray type=\"Int32\" Name=\"point_role\" format=\"ascii\">\n";
+    for (std::size_t i = 0; i < trajectoryCount; ++i)
+        f << "          0 1\n";
+    f << "        </DataArray>\n";
+    f << "      </PointData>\n";
+
+    f << "      <CellData>\n";
+    f << "        <DataArray type=\"Int32\" Name=\"ray_id\" format=\"ascii\">\n";
+    for (std::size_t i = 0; i < trajectoryCount; ++i)
+        f << "          " << i << '\n';
+    for (std::size_t i = 0; i < trajectoryCount; ++i)
+        f << "          " << i << '\n';
+    f << "        </DataArray>\n";
+    f << "        <DataArray type=\"Int32\" Name=\"light_id\" format=\"ascii\">\n";
+    for (std::size_t i = 0; i < trajectoryCount; ++i)
+        f << "          " << lightIndices[i] << '\n';
+    for (std::size_t i = 0; i < trajectoryCount; ++i)
+        f << "          " << lightIndices[i] << '\n';
+    f << "        </DataArray>\n";
+    f << "      </CellData>\n";
+
+    f << "      <Points>\n";
+    f << "        <DataArray type=\"Float32\" NumberOfComponents=\"3\" format=\"ascii\">\n";
+    for (std::size_t i = 0; i < trajectoryCount; ++i)
+    {
+        const std::size_t base = 6 * i;
+        f << "          " << reflectionAndMeshPoints[base] << ' '
+            << reflectionAndMeshPoints[base + 1] << ' '
+            << reflectionAndMeshPoints[base + 2] << '\n';
+        f << "          " << reflectionAndMeshPoints[base + 3] << ' '
+            << reflectionAndMeshPoints[base + 4] << ' '
+            << reflectionAndMeshPoints[base + 5] << '\n';
+    }
+    f << "        </DataArray>\n";
+    f << "      </Points>\n";
+
+    f << "      <Verts>\n";
+    f << "        <DataArray type=\"Int32\" Name=\"connectivity\" format=\"ascii\">\n";
+    for (std::size_t i = 0; i < trajectoryCount; ++i)
+        f << "          " << 2 * i << '\n';
+    f << "        </DataArray>\n";
+    f << "        <DataArray type=\"Int32\" Name=\"offsets\" format=\"ascii\">\n";
+    for (std::size_t i = 1; i <= trajectoryCount; ++i)
+        f << "          " << i << '\n';
+    f << "        </DataArray>\n";
+    f << "      </Verts>\n";
+
+    f << "      <Lines>\n";
+    f << "        <DataArray type=\"Int32\" Name=\"connectivity\" format=\"ascii\">\n";
+    for (std::size_t i = 0; i < trajectoryCount; ++i)
+        f << "          " << 2 * i << ' ' << 2 * i + 1 << '\n';
+    f << "        </DataArray>\n";
+    f << "        <DataArray type=\"Int32\" Name=\"offsets\" format=\"ascii\">\n";
+    for (std::size_t i = 1; i <= trajectoryCount; ++i)
+        f << "          " << 2 * i << '\n';
+    f << "        </DataArray>\n";
+    f << "      </Lines>\n";
+
+    f << "    </Piece>\n";
+    f << "  </PolyData>\n";
+    f << "</VTKFile>\n";
+
+    if (!f)
+        throw std::runtime_error("Failed while writing VTK file: " + filename);
+}
+
 void exportImplicitSurfaceVTP(
     const std::string& filename,
     ImplicitType type,

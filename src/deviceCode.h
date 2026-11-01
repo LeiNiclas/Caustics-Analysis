@@ -15,7 +15,9 @@ struct PRD
     vec3f color;
     int depth;
     vec3f reflectionPoint;
+    int lightIndex;
     float* reflectionPoints;
+    int* reflectionLightIndices;
     int* reflectionCounter;
     int reflectionCapacity;
 
@@ -50,7 +52,9 @@ struct RayGenData
     vec3i gridDims;
     int* reflectionCounter;
     float* reflectionPoints;
+    int* reflectionLightIndices;
     int reflectionCapacity;
+    int lightIndex;
 };
 
 

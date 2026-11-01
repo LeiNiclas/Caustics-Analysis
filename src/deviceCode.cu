@@ -176,7 +176,9 @@ OPTIX_RAYGEN_PROGRAM(rayGen)() // Name in parantheses must match name given in m
 	prd.depth = 0;
 	prd.color = vec3f(0.0f);
 	prd.reflectionPoint = vec3f(0.0f);
+	prd.lightIndex = self.lightIndex;
 	prd.reflectionPoints = self.reflectionPoints;
+	prd.reflectionLightIndices = self.reflectionLightIndices;
 	prd.reflectionCounter = self.reflectionCounter;
 	prd.reflectionCapacity = self.reflectionCapacity;
 	prd.primaryGrid = self.primaryGrid;
@@ -260,7 +262,7 @@ OPTIX_INTERSECT_PROGRAM(Implicit)()
 	float val1 = evalImplicit(self.type, getPositionAlongRay(rayOrigin, rayDirection, t1), self.param0, self.param1); //torus(getPositionAlongRay(rayOrigin, rayDirection, t1), majorRadius, minorRadius);
 	float val2;
 
-	int maxSteps = 100;
+	int maxSteps = static_cast<int>(ceilf(tMax / tIncrementStep));
 	int maxBisectionSteps = 50;
 
 	bool signChangeIntervalFound = false;
@@ -351,8 +353,10 @@ OPTIX_CLOSEST_HIT_PROGRAM(Implicit)()
         secPRD.depth        = prd.depth + 1;
         secPRD.color        = vec3f(0.f);
 		secPRD.reflectionPoint = hitPoint;
-		secPRD.reflectionPoints = prd.reflectionPoints;
-		secPRD.reflectionCounter = prd.reflectionCounter;
+        secPRD.lightIndex = prd.lightIndex;
+        secPRD.reflectionPoints = prd.reflectionPoints;
+        secPRD.reflectionLightIndices = prd.reflectionLightIndices;
+        secPRD.reflectionCounter = prd.reflectionCounter;
 		secPRD.reflectionCapacity = prd.reflectionCapacity;
         secPRD.primaryGrid  = prd.primaryGrid;
         secPRD.bounceGrid   = prd.bounceGrid;
@@ -374,17 +378,23 @@ OPTIX_CLOSEST_HIT_PROGRAM(Implicit)()
 OPTIX_CLOSEST_HIT_PROGRAM(TriangleMesh)()  // !!! Add to main
 {
 	PRD &prd = owl::getPRD<PRD>();
-	if (prd.depth != 1 || !prd.reflectionPoints || !prd.reflectionCounter)
+	if (prd.depth != 1 || !prd.reflectionPoints || !prd.reflectionLightIndices || !prd.reflectionCounter)
 		return;
 
 	const int slot = atomicAdd(prd.reflectionCounter, 1);
 	if (slot >= prd.reflectionCapacity)
 		return;
 
-	const int base = 3 * slot;
+	const int base = 6 * slot;
 	prd.reflectionPoints[base + 0] = prd.reflectionPoint.x;
 	prd.reflectionPoints[base + 1] = prd.reflectionPoint.y;
 	prd.reflectionPoints[base + 2] = prd.reflectionPoint.z;
+	const vec3f hitPoint = (vec3f)optixGetWorldRayOrigin()
+		+ optixGetRayTmax() * (vec3f)optixGetWorldRayDirection();
+	prd.reflectionPoints[base + 3] = hitPoint.x;
+	prd.reflectionPoints[base + 4] = hitPoint.y;
+	prd.reflectionPoints[base + 5] = hitPoint.z;
+	prd.reflectionLightIndices[slot] = prd.lightIndex;
 
 }
 

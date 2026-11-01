@@ -10,6 +10,9 @@ SceneConfig loadScene(const std::string& path)
     json j = json::parse(f);
 
     SceneConfig scene;
+    scene.computeReflections = j.value("compute_reflections", false);
+    scene.useConvexHullForReflectionGathering =
+        j.value("useConvexHullForReflectionGathering", false);
 
     for (auto& light : j["lights"])
     {

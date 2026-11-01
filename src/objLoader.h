@@ -9,5 +9,7 @@ struct TriangleMesh {
 };
 
 TriangleMesh loadObj(const std::string& filename);
+void saveObj(const TriangleMesh& mesh, const std::string& filename);
 
 void applyTransform(TriangleMesh& mesh, const owl::vec3f& pos, const owl::vec3f& rotDeg, const owl::vec3f& scale);
+TriangleMesh convexHull(const TriangleMesh& mesh);
