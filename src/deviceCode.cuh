@@ -12,7 +12,15 @@ __device__ inline vec3f torusNormal(vec3f position, float R){
     return normalize(normal);
 }
 
-
+__device__ inline vec3f elongatedTorusNormal(vec3f position, float R){
+    vec3f normal;
+    float sqroot = owl::sqrt(0.25f * position.x * position.x + position.y * position.y);
+    float factor = 2.0f * (1.0f - R / sqroot);
+    normal.x = 0.25f * position.x * factor;
+    normal.y = position.y * factor;
+    normal.z = position.z * 2.0f;
+    return normalize(normal);
+}
 
 __device__ inline vec3f parabolaNormal(vec3f position)
 {
@@ -101,6 +109,7 @@ __device__ inline vec3f evalImplicitNormal(ImplicitType type, vec3f position, fl
         case IMPLICIT_CUSHION_SURFACE: return cushionSurfaceNormal(position);
         case IMPLICIT_TANGLECUBE: return tanglecubeNormal(position);
         case IMPLICIT_HYPERBOLIC_PARABOLOID: return hyperbolicParaboloidNormal(position);
+        case IMPLICIT_TORUS_ELONGATED: return elongatedTorusNormal(position, p0);
         default: return vec3f(1.0f);
     }
 }

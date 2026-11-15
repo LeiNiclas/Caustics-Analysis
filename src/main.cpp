@@ -31,6 +31,7 @@ ImplicitType getImplicitType(const std::string& type)
     if (type == "cushion_surface") return IMPLICIT_CUSHION_SURFACE;
     if (type == "tanglecube") return IMPLICIT_TANGLECUBE;
     if (type == "hyperbolic_paraboloid") return IMPLICIT_HYPERBOLIC_PARABOLOID;
+    if (type == "elongated_torus") return IMPLICIT_TORUS_ELONGATED;
 
     throw std::runtime_error(
         "Unsupported implicitSurface.type '" + type

@@ -11,6 +11,7 @@
 enum ImplicitType
 {
     IMPLICIT_TORUS,
+    IMPLICIT_TORUS_ELONGATED,
     IMPLICIT_PARABOLA,
     IMPLICIT_GYROID,
     IMPLICIT_PERTUBED_PARABOLOID,
@@ -31,6 +32,11 @@ IMPLICIT_SURFACE_HD inline float evalImplicitSurface(
     case IMPLICIT_TORUS:
     {
         const float radial = sqrtf(x * x + y * y) - p0;
+        return radial * radial + z * z - p1 * p1;
+    }
+    case IMPLICIT_TORUS_ELONGATED:
+    {
+        const float radial = sqrtf(0.25 * x * x + y * y) - p0;
         return radial * radial + z * z - p1 * p1;
     }
     case IMPLICIT_PARABOLA:
